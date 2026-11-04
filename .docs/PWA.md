@@ -66,6 +66,13 @@ Los iconos deberán incluir los tamaños necesarios para los navegadores y dispo
 
 # Estrategia de Caché
 
+La primera versión debe usar la caché mínima definida en
+`docs/backend/cache.md`: recursos estáticos, catálogo de precios versionado,
+servicios asignados al técnico y una cola temporal de operaciones críticas.
+No se cachean paneles administrativos, datos globales, sesiones, secretos,
+URLs privadas ni respuestas sensibles completas de la API. Esta caché no es
+fuente oficial; Supabase PostgreSQL sigue siendo la fuente de verdad.
+
 La estrategia de caché debe diferenciar entre:
 
 ### Recursos estáticos
@@ -82,7 +89,7 @@ Ejemplos:
 
 ### Información dinámica
 
-Los datos provenientes de la aplicación y de Supabase **no deben cachearse indiscriminadamente**.
+Los datos dinámicos provenientes de la API Go **no deben cachearse indiscriminadamente**.
 
 La información dinámica debe utilizar estrategias específicas dependiendo de su naturaleza.
 
@@ -106,7 +113,7 @@ El sistema debe diferenciar claramente entre:
 
 **Online**
 
-El dispositivo tiene conexión con el servidor y Supabase.
+El dispositivo tiene conexión con la API Go. Go accede a Supabase desde el servidor.
 
 **Offline**
 
@@ -155,10 +162,10 @@ PWA
 Sí              No
  │               │
  ↓               ↓
-Servidor       Storage local
+API Go         Storage local
  │               │
  ↓               ↓
-Supabase      Cola de operaciones
+Supabase PostgreSQL    Cola de operaciones
                  │
                  ↓
           Recupera conexión
@@ -167,7 +174,7 @@ Supabase      Cola de operaciones
           Sincronización
                  │
                  ↓
-              Servidor
+              API Go
 ```
 
 La cola deberá permitir:
@@ -210,9 +217,9 @@ La base de datos del servidor continúa siendo la **fuente oficial de verdad**.
 El almacenamiento local del dispositivo solamente representa un estado temporal y/o una caché de trabajo.
 
 ```text
-Supabase
+Supabase PostgreSQL
    ↑
-Servidor
+API Go
    ↑
 PWA
    ↓
@@ -260,7 +267,7 @@ Enviar operaciones
    ↓
 Validar en servidor
    ↓
-Persistir en Supabase
+Persistir en Supabase PostgreSQL mediante Go
    ↓
 Confirmar operación
    ↓
@@ -269,7 +276,7 @@ Eliminar de cola
 Actualizar estado local
 ```
 
-La sincronización debe ser segura frente a:
+La sincronización envía operaciones a la API Go. Go valida reglas, autorización e idempotencia antes de persistir en Supabase PostgreSQL. La sincronización debe ser segura frente a:
 
 - pérdida de conexión
 - múltiples reintentos
@@ -370,7 +377,7 @@ No se deben almacenar en el dispositivo:
 
 Las capacidades offline deben respetar el rol del usuario.
 
-Un técnico nunca debe poder obtener mediante caché local información perteneciente a otro técnico simplemente porque anteriormente estuvo disponible en el dispositivo.
+Un técnico nunca debe poder obtener mediante caché local información perteneciente a otro técnico simplemente porque anteriormente estuvo disponible en el dispositivo. Los datos locales deben quedar asociados a la sesión/usuario que los sincronizó; al cambiar de usuario no se muestran ni envían bajo otra identidad. El cierre de sesión debe limpiar la caché privada según la política definida para conservar de forma segura las operaciones aún pendientes.
 
 ---
 
@@ -397,42 +404,33 @@ La implementación PWA no debe modificar la arquitectura principal del sistema.
 La estructura continuará siendo:
 
 ```text
-Next.js
-   ↓
-Server Components / Client Components
-   ↓
-Server Actions / Route Handlers
-   ↓
-Capa de negocio
-   ↓
-Prisma
-   ↓
-Supabase PostgreSQL
+Navegador / PWA
+   ├── Interfaz Next.js
+   ├── IndexedDB (caché y cola offline)
+   └── HTTPS
+         ↓
+      API Go
+         ↓
+   Supabase PostgreSQL
 ```
 
 La PWA agrega una capa adicional en el cliente:
 
 ```text
-                    Next.js
-                       │
-              ┌────────┴────────┐
-              │                 │
-        Server Side        Client Side
-              │                 │
-              │                PWA
-              │                 │
-              │        ┌────────┴────────┐
-              │        │                 │
-              │   Service Worker    IndexedDB
-              │        │                 │
-              └────────┴─────────────────┘
-                       │
-                    Prisma
-                       │
-                    Supabase
+              Next.js (UI)
+                   │
+        Solicitudes de negocio
+                   │
+                   ▼
+                API Go
+                   │
+             Supabase PostgreSQL
+                   ▲
+                   │
+PWA ── Service Worker / IndexedDB
 ```
 
-La implementación PWA no debe trasladar Prisma, secretos ni lógica de servidor al navegador.
+Next.js no debe ejecutar reglas de negocio ni acceder a PostgreSQL. La implementación PWA no debe trasladar credenciales de servidor o secretos de Supabase al navegador. Las cargas/descargas de archivos se autorizan mediante el flujo definido en `.docs/storage.md`.
 
 ---
 
@@ -451,6 +449,8 @@ Supabase PostgreSQL
 ```
 
 El almacenamiento local solamente funciona como soporte temporal para las capacidades offline.
+
+La lista de precios del técnico se conserva offline como una versión publicada. La caché se actualiza al sincronizar una nueva versión después de una importación de Administración completada correctamente; un intento fallido no reemplaza la versión local vigente. Ver `.docs/modulos/Inventario.md`.
 
 ---
 

@@ -1,640 +1,90 @@
-# Infraestructura del Sistema — TechService
+# Infraestructura — TechService
 
-# Visión General
+## Alcance
 
-TechService utiliza una infraestructura separada entre aplicación y base de datos.
-
-La aplicación Next.js se ejecuta en Railway.
-
-La base de datos PostgreSQL se aloja en Supabase.
-
-Esta separación permite cambiar el proveedor de infraestructura de aplicación sin modificar la fuente de verdad de los datos.
-
-Arquitectura de producción:
+La infraestructura objetivo separa el frontend web, el backend Go y los servicios gestionados de Supabase. El proveedor de hosting de Next.js y Go todavía no está definido; este documento especifica responsabilidades y requisitos sin elegir proveedor ni agregar configuración ejecutable.
 
 ```text
-                    INTERNET
-                       │
-                       ▼
-                 Usuarios / PWA
-                       │
-                      HTTPS
-                       │
-                       ▼
-                  ┌──────────┐
-                  │ Railway  │
-                  │ Next.js  │
-                  └────┬─────┘
-                       │
-                     Prisma
-                       │
-                       ▼
-                ┌─────────────┐
-                │   Supabase  │
-                │ PostgreSQL  │
-                └─────────────┘
+Usuarios
+   │ HTTPS
+   ├──────────────> Frontend Next.js / PWA
+   │                         │ API HTTP
+   └─────────────────────────┴────────────> Backend Go
+                                                ├── PostgreSQL de Supabase
+                                                ├── Supabase Storage
+                                                └── Resend
 ```
 
----
+## Componentes
 
-# Componentes de Infraestructura
+### Frontend Next.js
 
-La infraestructura principal está formada por:
+- Entrega la interfaz responsive y los recursos de la PWA.
+- Consume operaciones de negocio exclusivamente desde la API Go.
+- No requiere acceso directo a PostgreSQL ni secretos de Supabase.
+- Puede tener configuración pública limitada a los datos no sensibles necesarios para conectar a la API.
 
-```text
-Railway
-Supabase
-Dominio
-HTTPS
-Variables de entorno
-Sistema de despliegue
-```
+### Backend Go
 
----
+- Servicio HTTP independiente, desarrollado en el repositorio separado `technical-service-backend`; mientras se prepara ese repositorio, su documentación vive en `docs/backend/`.
+- Mantiene autenticación, autorización, reglas de negocio, acceso SQL, integraciones y emisión de URLs firmadas para Storage.
+- Se conecta a Supabase PostgreSQL desde un entorno seguro de servidor.
+- Debe disponer de health check, logs estructurados, límites de petición y cierre ordenado.
+- La configuración exacta de proceso, réplicas y escalado se definirá al seleccionar el proveedor.
 
-# Aplicación
+### Supabase
 
-## Railway
+- PostgreSQL es la fuente de verdad.
+- Storage guarda los archivos binarios y aplica políticas de acceso a objetos.
+- Las credenciales de backend con privilegios se mantienen como secretos server-side.
+- RLS no sustituye la autorización de Go; solo se considera defensa adicional cuando la identidad de Go se propaga de manera comprobable.
+- La conexión a base debe usar TLS y el pooler/endpoint recomendado para el entorno de ejecución seleccionado.
 
-Railway será utilizado como infraestructura de ejecución de la aplicación Next.js.
+### Resend
 
-Railway es responsable de ejecutar el monolito completo.
+Se utiliza para entregar los correos de recuperación de contraseña. La API key y el dominio/verificación de envío son configuración privada del backend.
 
-El despliegue incluirá:
+## Configuración y secretos
 
-- Next.js
-- Server Components
-- Server Actions
-- Route Handlers
-- Middleware
-- Capa de negocio
-- Prisma
-- Autenticación
-- Integraciones del servidor
+Los siguientes valores son ejemplos de nombres, no valores que deban incluirse en el repositorio:
 
-La aplicación se expone mediante HTTPS.
+- `DATABASE_URL`: conexión PostgreSQL usada por Go.
+- `SUPABASE_URL`: endpoint de Supabase requerido para Storage.
+- `SUPABASE_SERVICE_ROLE_KEY`: clave privilegiada, solo en backend y solo si se necesita para operaciones server-side.
+- `RESEND_API_KEY`: clave privada de envío de correo.
+- `API_PORT` y `APP_ENV`: puerto y entorno del servicio Go.
+- URL/base de la API configurada para Next.js, sin incluir secretos.
 
----
+No publicar claves en `NEXT_PUBLIC_*`, JavaScript del navegador, logs, capturas ni archivos versionados. Usar secretos del proveedor en producción y un archivo local ignorado por Git para desarrollo.
 
-# Monolito
+## Red, sesión y CORS
 
-TechService continúa siendo un único monolito Full Stack.
+El navegador usa HTTPS para el frontend y la API. El dominio y la estrategia de sesión aún deben definirse junto con el hosting. Si frontend y API tienen orígenes diferentes, configurar CORS para los orígenes permitidos y credenciales requeridas; no usar comodines con credenciales. Configurar cookies `Secure`, `HttpOnly`, `SameSite` y protecciones CSRF coherentes con esos dominios.
 
-```text
-Railway
-   │
-   ▼
-Next.js
-   ├── Frontend
-   ├── Server Components
-   ├── Client Components
-   ├── Server Actions
-   ├── Route Handlers
-   ├── Middleware
-   ├── Negocio
-   ├── Prisma
-   └── Integraciones
-```
+Los navegadores no acceden directamente a PostgreSQL. Las operaciones de carga/descarga en Storage usan URLs firmadas de corta duración que Go emite después de comprobar autorización.
 
-No se deberán crear múltiples servicios independientes sin una necesidad técnica o arquitectónica explícita.
+## Despliegue y operación
 
----
+Cada entorno (desarrollo, prueba y producción) debe tener configuración, datos y credenciales separados. Las migraciones SQL se revisan y aplican antes de desplegar una versión de Go que dependa del nuevo esquema.
 
-# Base de Datos
+La operación debe contemplar:
 
-## Supabase
+- Health checks del servicio Go y alertas ante indisponibilidad.
+- Logs y errores de integraciones con datos sensibles redactados.
+- Backups y procedimiento probado de recuperación para PostgreSQL.
+- Límites de tamaño/tipo de carga, expiración de URLs firmadas y cuotas de Storage.
+- Rotación de secretos y mínimo privilegio.
+- TLS en tránsito y control de acceso al panel/proyecto Supabase.
 
-Supabase será utilizado como proveedor de PostgreSQL.
+Los proveedores, dominios, regiones, tamaños de instancia, pipelines y comandos de despliegue quedan pendientes hasta que se decida dónde alojar frontend y backend.
 
-Supabase constituye la infraestructura principal de datos del sistema.
+## Desarrollo local
 
-```text
-Next.js
-   ↓
-Prisma
-   ↓
-Supabase PostgreSQL
-```
+El frontend y el backend se ejecutarán como procesos separados, cada uno con sus variables de entorno. La configuración de Supabase debe apuntar al proyecto/entorno de desarrollo y no a producción. No se presupone Docker ni `docker-compose`; si se decide incorporarlo, deberá documentarse como una decisión aparte.
 
-La base de datos de producción no se alojará dentro de Railway.
+## Documentos relacionados
 
-Railway y Supabase son componentes independientes.
-
----
-
-# Fuente de Verdad
-
-La base de datos PostgreSQL de Supabase constituye la única fuente oficial de verdad.
-
-```text
-Supabase PostgreSQL
-        ↑
-      Prisma
-        ↑
-      Next.js
-        ↑
-       PWA
-```
-
-Los datos almacenados en la PWA mediante IndexedDB nunca sustituyen la base de datos principal.
-
----
-
-# Región
-
-La infraestructura deberá ubicarse preferentemente en regiones geográficamente cercanas a los usuarios y entre sí.
-
-Para usuarios ubicados principalmente en Argentina, se deberá evaluar una región de Sudamérica, preferentemente São Paulo, cuando se encuentre disponible y sea compatible con los servicios utilizados.
-
-La región de la aplicación y la región de la base de datos deberán mantenerse próximas para reducir la latencia entre Next.js y PostgreSQL.
-
----
-
-# Comunicación
-
-La comunicación de producción deberá utilizar HTTPS.
-
-```text
-Usuario
-   ↓
-HTTPS
-   ↓
-Railway
-   ↓
-Next.js
-   ↓
-Prisma
-   ↓
-Supabase
-   ├── PostgreSQL
-   └── Storage
- -
-```
-
-Las conexiones directas desde el navegador a credenciales privadas de PostgreSQL están prohibidas.
-
----
-
-# Variables de Entorno
-
-Las configuraciones sensibles deberán almacenarse como variables de entorno.
-
-Las variables necesarias para producción serán configuradas en Railway.
-
-Ejemplos conceptuales:
-
-```text
-DATABASE_URL
-DIRECT_URL
-SUPABASE_URL
-SUPABASE_ANON_KEY
-SUPABASE_SERVICE_ROLE_KEY
-AUTH_SECRET
-```
-
-Los nombres definitivos dependerán de la implementación.
-
-Las variables privadas nunca deberán:
-
-- almacenarse en Git
-- incluirse en código cliente
-- exponerse mediante componentes del navegador
-- incluirse en archivos públicos
-
----
-
-# Seguridad de Secretos
-
-Las credenciales administrativas y secretos privados solo podrán utilizarse en código de servidor.
-
-Nunca deberán enviarse al navegador:
-
-```text
-DATABASE_URL
-DIRECT_URL
-SERVICE_ROLE_KEY
-AUTH_SECRET
-credenciales privadas
-```
-
-El código cliente solamente podrá recibir la información estrictamente necesaria.
-
----
-
-# Dominio
-
-La aplicación deberá utilizar un dominio propio en producción.
-
-Ejemplo conceptual:
-
-```text
-https://app.techservice.com
-```
-
-El dominio deberá apuntar al servicio desplegado en Railway.
-
----
-
-# HTTPS
-
-La aplicación de producción deberá utilizar HTTPS.
-
-HTTPS es obligatorio para:
-
-- seguridad de autenticación
-- cookies seguras
-- PWA
-- Service Worker
-- Push Notifications
-
-La configuración de certificados deberá ser gestionada por la infraestructura correspondiente.
-
----
-
-# Despliegue
-
-El código fuente deberá mantenerse en un repositorio Git.
-
-Flujo recomendado:
-
-```text
-Git
- ↓
-Repositorio
- ↓
-Railway
- ↓
-Build
- ↓
-Deploy
- ↓
-Next.js
-```
-
-Los despliegues deberán poder reproducirse a partir del código y configuración del repositorio.
-
----
-
-# Producción
-
-El entorno de producción deberá mantenerse separado del entorno de desarrollo.
-
-Conceptualmente:
-
-```text
-Desarrollo
-    ↓
-Git
-    ↓
-Deploy
-    ↓
-Producción
-```
-
-Las credenciales de desarrollo y producción no deberán mezclarse.
-
----
-
-# Base de Datos de Producción
-
-La base de datos de producción deberá mantenerse independiente del entorno local de desarrollo.
-
-No se deberá ejecutar accidentalmente una migración destructiva contra producción.
-
-Las modificaciones del esquema deberán gestionarse mediante migraciones controladas.
-
----
-
-# Prisma en Producción
-
-Prisma se ejecutará dentro del servicio Next.js en Railway.
-
-```text
-Railway
-  ↓
-Next.js
-  ↓
-Prisma
-  ↓
-Supabase
-   ├── PostgreSQL
-   └── Storage
-```
-
-Prisma no se ejecutará en el navegador.
-
----
-
-# Conectividad de Base de Datos
-
-La aplicación deberá utilizar las conexiones apropiadas para el entorno de producción.
-
-La configuración de conexión deberá contemplar correctamente:
-
-- pooling cuando corresponda
-- conexiones concurrentes
-- timeouts
-- reconexión
-- migraciones
-- límites del proveedor
-
-No se deberán crear conexiones innecesarias por cada renderizado o solicitud.
-
----
-
-# Disponibilidad
-
-La disponibilidad del sistema depende de:
-
-```text
-Internet
-   ↓
-Railway
-   ↓
-Next.js
-   ↓
-Supabase
-   ├── PostgreSQL
-   └── Storage
-```
-
-La indisponibilidad de Railway afecta la ejecución de la aplicación.
-
-La indisponibilidad de Supabase afecta el acceso a la fuente principal de datos.
-
-La PWA puede mantener capacidades offline limitadas, pero no sustituye la disponibilidad del servidor.
-
----
-
-# PWA y Offline
-
-La PWA puede continuar funcionando con determinados datos cuando se pierde temporalmente la conexión.
-
-```text
-ONLINE
-
-PWA
- ↓
-Railway
- ↓
-Supabase
-   ├── PostgreSQL
-   └── Storage
-```
-
-Cuando no existe conexión:
-
-```text
-PWA
- ↓
-Service Worker
- ↓
-IndexedDB
- ↓
-Cola local
-```
-
-Cuando la conexión vuelve:
-
-```text
-IndexedDB
- ↓
-Sincronización
- ↓
-Railway
- ↓
-Supabase
-   ├── PostgreSQL
-   └── Storage
-```
-
-El almacenamiento local no constituye infraestructura de persistencia definitiva.
-
----
-
-# Integraciones Externas
-
-Las integraciones externas que requieren ejecución de servidor deberán ejecutarse desde Next.js en Railway.
-
-Ejemplo:
-
-```text
-Servicio creado
-      ↓
-Next.js
-      ↓
-Lógica de negocio
-      ↓
-Integración
-      ↓
-Google Sheets
-```
-
-Las integraciones no deberán ejecutarse desde el navegador cuando requieran secretos o credenciales privadas.
-
----
-
-# Notificaciones Push
-
-Las capacidades de Push utilizarán el navegador y Service Worker en el cliente.
-
-La infraestructura de servidor será responsable de gestionar la lógica necesaria para generar y enviar las notificaciones.
-
-Arquitectura conceptual:
-
-```text
-Evento del sistema
-       ↓
-Next.js
-       ↓
-Servicio Push
-       ↓
-Dispositivo del técnico
-       ↓
-Service Worker
-       ↓
-Notificación
-```
-
----
-
-# Backups
-
-La base de datos deberá contar con una estrategia de backup adecuada para producción.
-
-Los backups deberán mantenerse independientes de la aplicación.
-
-La restauración de una base de datos deberá considerarse un procedimiento operacional documentado.
-
----
-
-# Monitoreo
-
-La infraestructura deberá poder monitorear como mínimo:
-
-- disponibilidad de la aplicación
-- errores de servidor
-- errores de base de datos
-- fallos de sincronización
-- errores de integraciones
-- consumo de recursos
-- tiempos de respuesta
-
-Los logs del servidor no deberán contener información sensible innecesaria.
-
----
-
-# Rendimiento
-
-El rendimiento de TechService dependerá principalmente de:
-
-- latencia entre Railway y Supabase
-- consultas Prisma
-- índices PostgreSQL
-- cantidad de consultas
-- consultas N+1
-- tamaño de respuestas
-- caché
-- renderizado de Next.js
-- optimización del cliente
-
-El número inicial de usuarios no requiere una arquitectura distribuida.
-
-La infraestructura deberá poder escalar verticalmente antes de considerar una separación del monolito.
-
----
-
-# Escalabilidad
-
-La estrategia inicial será mantener un único servicio Next.js.
-
-```text
-Railway
-   ↓
-Next.js
-   ↓
-Supabase
-   ├── PostgreSQL
-   └── Storage
-```
-
-Si el crecimiento lo requiere, se podrá incrementar posteriormente:
-
-- CPU
-- memoria
-- concurrencia
-- capacidad de base de datos
-- recursos de almacenamiento
-- capacidad de red
-
-La separación entre aplicación y base de datos permite migrar Railway por otro proveedor sin cambiar la arquitectura de datos.
-
----
-
-# Costos de Infraestructura
-
-Los costos de infraestructura estarán compuestos principalmente por:
-
-```text
-Hosting de Next.js
-+
-Base de datos Supabase
-+
-Dominio
-+
-Servicios externos utilizados
-```
-
-Railway será responsable del costo de ejecución de la aplicación.
-
-Supabase será responsable del costo de PostgreSQL y servicios contratados.
-
-Los límites, cuotas y costos deberán verificarse directamente en los planes contratados antes de pasar a producción.
-
-No se deberán asumir costos fijos adicionales sin documentarlos.
-
----
-
-# Principio de Independencia
-
-Railway no debe convertirse en una dependencia arquitectónica de TechService.
-
-La aplicación deberá poder migrarse a:
-
-```text
-VPS
-Cloud Provider
-Otro PaaS
-Infraestructura propia
-```
-
-sin modificar la fuente de verdad de los datos.
-
-La arquitectura debe permanecer:
-
-```text
-Aplicación
-   ↓
-Prisma
-   ↓
-PostgreSQL
-```
-
-independientemente del proveedor de infraestructura.
-
----
-
-# Regla Arquitectónica de Infraestructura
-
-La infraestructura actual de producción es:
-
-```text
-┌─────────────────────────────┐
-│           Railway           │
-│                             │
-│          Next.js            │
-│          Monolito           │
-│                             │
-│   Server + Client + Prisma  │
-└──────────────┬──────────────┘
-               │
-               │ HTTPS / PostgreSQL
-               │
-┌──────────────▼──────────────┐
-│          Supabase           │
-│                             │
-│        PostgreSQL           │
-│            RLS              |
-|          Storage            │
-└─────────────────────────────┘
-```
-
-Railway ejecuta la aplicación.
-
-Supabase almacena los datos.
-
-La PWA se ejecuta en los dispositivos de los usuarios.
-
-IndexedDB proporciona persistencia temporal para operaciones offline.
-
----
-
-# Regla Final
-
-La aplicación y la base de datos son componentes independientes.
-
-```text
-Railway
-=
-Infraestructura de aplicación
-
-Supabase
-=
-Infraestructura de datos
-```
-
-Cambiar Railway no debe implicar migrar la base de datos.
-
-Cambiar la infraestructura de aplicación no debe modificar las reglas de negocio ni la fuente oficial de verdad.
-
-Supabase PostgreSQL continúa siendo la única fuente definitiva de información de TechService.
+- Arquitectura lógica: `.docs/architecture.md`
+- Responsabilidades y estructura de Go: `.docs/backend.md`
+- Contrato HTTP: `.docs/api.md`
+- Archivos: `.docs/storage.md`

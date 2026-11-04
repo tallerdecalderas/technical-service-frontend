@@ -187,7 +187,7 @@ Visualizar fotografía
 Eliminar antes de confirmar
 ```
 
-Las fotografías deberán enviarse al sistema mediante el mecanismo definido en `storage.md`.
+Las fotografías deberán enviarse al sistema mediante el mecanismo definido en `.docs/storage.md`.
 
 Las imágenes deberán optimizarse antes de almacenarse cuando corresponda.
 

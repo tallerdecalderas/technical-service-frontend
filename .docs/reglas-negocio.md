@@ -23,9 +23,9 @@ Toda la lógica del sistema debe respetar las siguientes reglas.
 
 Toda la información oficial se almacena en la base de datos del sistema.
 
-Ninguna integración externa (Google Sheets, WhatsApp, etc.) puede modificar información directamente.
+Ninguna integración externa puede modificar directamente la base de datos ni escribir en ella de manera autónoma.
 
-Las integraciones únicamente reflejan información existente.
+Una importación explícitamente iniciada por Administración (por ejemplo, la importación de una lista de precios desde Google Sheets) es una operación del sistema: Go valida los datos y, solo si la importación completa correctamente, publica el resultado en la base oficial y registra quién la inició. Si falla, la versión vigente se conserva.
 
 ---
 
@@ -33,7 +33,7 @@ Las integraciones únicamente reflejan información existente.
 
 Un Servicio representa una visita programada a un cliente.
 
-El servicio posee su propio historial, estado, cliente asociado, técnico asignado y documentación asociada.
+El servicio posee su propio historial, estado, cliente asociado, técnico asignado, pago del servicio y documentación asociada.
 
 ---
 
@@ -177,9 +177,11 @@ Debe actualizarse automáticamente cuando:
 
 La agenda puede sincronizarse con Google Sheets.
 
-Google Sheets es únicamente una vista externa.
+Google Sheets es una vista externa de la agenda: refleja los servicios de TechService y no los modifica.
 
-Nunca modifica la información del sistema ya que el sistema es offline se ctualiza la base dde datos igual cuando la coneccion se levante. asi tenemos el respaldo que los tecnico puedan ver sus servicios en googlesheet.
+La importación administrativa de listas de precios desde Sheets es un flujo separado. Go valida y publica cada importación exitosa como una nueva versión oficial; los técnicos actualizan su caché offline al sincronizar esa versión. Una importación fallida no reemplaza el catálogo vigente.
+
+Las operaciones offline del técnico se sincronizan con la API Go cuando vuelve la conexión. La información local no se considera confirmada hasta que Go la acepte.
 
 ---
 

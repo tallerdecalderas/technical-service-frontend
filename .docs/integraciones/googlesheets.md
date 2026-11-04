@@ -1,229 +1,101 @@
-# Integraciones
+# Integración con Google Sheets
 
-# Objetivo
+## Alcance
 
-El módulo Integraciones permite conectar TechService con servicios externos sin modificar la lógica principal del sistema.
+Google Sheets participa en dos flujos separados:
 
-Toda integración debe respetar el siguiente principio.
+1. **Agenda:** exportación unidireccional de la información de TechService para visualización externa.
+2. **Lista de precios:** importación explícitamente iniciada por Administración, validada y publicada como nueva versión del catálogo oficial.
 
-> TechService es la única fuente oficial de información.
+La integración se coordina desde la API Go. No hay acceso directo desde el navegador a la base de datos ni a credenciales de Google o Supabase. Esta integración aún está pendiente de implementación.
 
-Las plataformas externas únicamente consumen o muestran información.
+## Principio de autoridad
 
-Nunca modifican directamente la base de datos.
+Supabase PostgreSQL es la fuente oficial de información operativa. Google Sheets no modifica directamente la base de datos.
 
----
+Una importación de lista de precios es una acción autorizada del sistema, no una escritura autónoma de Sheets: Administración la inicia, Go obtiene y valida los datos y Go decide si publicar una nueva versión. Un fallo conserva intacto el catálogo oficial vigente.
 
-# Arquitectura
+## Flujo 1: exportar agenda
 
-```
-                TechService
-
-                     │
-
-      ┌──────────────┼──────────────┐
-
-      ▼
-
-Google Sheets
-
-      ▼
-
-Visualización
+```text
+Servicios en TechService
+          ↓
+API Go
+          ↓
+Google Sheets (vista de agenda)
 ```
 
-Cada integración
-
----
-
-# Principios
-
-Todas las integraciones deberán cumplir.
-
-- Desacopladas del negocio.
-- Independientes entre sí.
-- Reutilizables.
-- Configurables.
-- Auditables.
-- Seguras.
-
----
-
-# Google Sheets
-
-## Objetivo
-
-Permitir que la Agenda pueda visualizarse desde una Hoja de Cálculo.
-
-Google Sheets funciona únicamente como una vista de la agenda.
-
-Nunca modifica información.
-
----
-
-## Sincronización
-
-La sincronización deberá ejecutarse automáticamente cuando.
-
-- Se crea una Orden.
-- Se modifica una Orden.
-- Cambia el Técnico.
-- Cambia la Fecha.
-- Cambia el Estado.
-- monto del servicio
-- Se actualiza la información de una Orden.
-
----
-
-## Información Sincronizada
-
-Cada fila representará una Orden.
-
-Columnas recomendadas.
-
-Número OT
-
-Fecha
-
-Cliente
-
-Dirección
-
-Localidad
-
-Teléfono
-
-Categoria de Servicio
-
-Observaciones
-
-Estado
-
-Link a la Orden
-
----
-
-## Tiempo de Actualización
-
-Objetivo.
-
-Menor a 5 segundos.
-
-Para el usuario deberá percibirse como tiempo real.
-
----
-
-## Fuente de Datos
-
-Google Sheets nunca podrá modificar información.
-
-Toda modificación deberá realizarse desde TechService.
-
----
-
-# Configuración
-
-Cada integración dispondrá de una pantalla propia.
-
-Ejemplo.
-
-Google Sheets.
-
-- Cuenta conectada.
-- Estado.
-- Última sincronización.
-- Botón "Sincronizar ahora".
-
----
-
-# Manejo de Errores
-
-Si una integración falla.
-
-La Orden deberá guardarse igualmente.
-
-La integración registrará el error.
-
-Nunca deberá bloquear el funcionamiento del sistema.
-
----
-
-# Reintentos
-
-Las sincronizaciones fallidas podrán ejecutarse nuevamente.
-
-Automáticamente.
-
-O manualmente desde Administración.
-
----
-
-# Seguridad
-
-Las credenciales nunca deberán almacenarse en texto plano.
-
-Toda integración deberá utilizar.
-
-Variables de entorno.
-
-Tokens seguros.
-
-Renovación automática cuando corresponda.
-
----
-
-# Registro (Logs)
-
-Toda integración deberá registrar.
-
-Inicio.
-
-Fin.
-
-Tiempo.
-
-Resultado.
-
-Mensaje.
-
-Usuario.
-
-Esto facilitará auditorías y resolución de problemas.
-
----
-
-# Escalabilidad
-
-El módulo deberá permitir agregar nuevas integraciones sin modificar las existentes.
-
-Cada integración deberá implementar una interfaz común.
-
-Ejemplo.
-
-```
-connect()
-
-disconnect()
-
-sync()
-
-status()
-
-validate()
+La agenda en Sheets es una proyección; las modificaciones se hacen en TechService. Cada fila representa un servicio e incluye solo los campos necesarios, por ejemplo:
+
+- Número de orden
+- Fecha y hora
+- Cliente
+- Dirección y localidad
+- Teléfono, si corresponde
+- Categoría de servicio
+- Técnico
+- Estado
+- Enlace a la orden, si existe una URL segura
+
+La sincronización debe reflejar altas y cambios de fecha, hora, técnico, estado o datos relevantes. El objetivo documentado es que el cambio se refleje en menos de cinco segundos cuando la integración está disponible; una demora o falla de Sheets no debe impedir guardar la operación en TechService.
+
+Go debe registrar los fallos y permitir reintentos automáticos o manuales. Los reintentos no deben crear filas duplicadas; la implementación debe identificar la fila por una clave estable de TechService.
+
+## Flujo 2: importar lista de precios
+
+```text
+Administración inicia importación
+               ↓
+             API Go
+               ↓
+Google Sheets → lectura y validación
+               ↓
+   Publicación atómica en PostgreSQL
+               ↓
+     Nueva versión del catálogo
+               ↓
+       Sincronización offline
 ```
 
----
+### Inicio y autorización
 
-# Principios de Desarrollo
+- Solo Administración puede iniciar una importación.
+- El navegador solicita la operación a Go; no descarga hojas con credenciales privilegiadas ni escribe en Supabase.
+- Go registra el usuario que inició la operación, la hora y el resultado.
 
-Cada integración deberá ser completamente independiente.
+### Validación y publicación
 
-No deberá conocer la lógica interna de otras integraciones.
+Antes de publicar, Go valida que la hoja sea legible y que sus filas cumplan el mapeo acordado para identificadores/códigos, descripciones y precios. La estructura y columnas exactas deben definirse antes de implementar el parser.
 
-Toda comunicación deberá realizarse mediante servicios propios.
+- Una importación válida y completa se activa como nueva versión oficial del catálogo.
+- La activación debe ser atómica: nunca dejar visible una lista parcialmente importada.
+- Si la lectura, validación o escritura falla, se conserva la versión activa anterior y se informa el error.
+- Las importaciones exitosas conservan una referencia de auditoría a la versión y a la ejecución que la produjo.
 
-Las integraciones nunca accederán directamente a componentes de interfaz.
+### Caché de técnicos
 
-Todo acceso deberá realizarse mediante servicios y APIs del sistema.
+La PWA conserva en IndexedDB una copia de la versión publicada para consulta offline. No actualiza silenciosamente los precios mientras no haya una nueva importación administrativa exitosa. Cuando Go confirma que existe una versión nueva, el dispositivo sincroniza esa versión y recién entonces reemplaza su copia local; si la descarga falla, conserva la copia anterior.
 
----
+## Configuración y seguridad
+
+- Mantener OAuth, service-account keys o tokens de Google en el entorno seguro del backend, no en Next.js público ni en el navegador.
+- Limitar la cuenta de integración a las hojas y operaciones estrictamente necesarias.
+- Validar datos externos como entrada no confiable; no ejecutar fórmulas o contenido de celdas como código.
+- No guardar secretos ni URLs firmadas en logs.
+- Configurar el ID de hoja y el mapeo de columnas mediante configuración controlada.
+
+Los detalles de credenciales, despliegue y rotación se definirán en `.docs/Infraestructura.md`.
+
+## API y observabilidad
+
+La API Go expone operaciones de estado/sincronización de agenda y la importación administrativa conforme a `.docs/api.md`. Errores de proveedor deben tener un estado visible y recuperable. Registrar como mínimo inicio, fin, usuario, duración, resultado y referencia de ejecución, sin incluir secretos.
+
+La importación del catálogo conserva la versión anterior hasta que la nueva haya sido validada y guardada completamente. Los errores de importación no afectan la agenda ni otros servicios.
+
+## Referencias
+
+- Arquitectura: `.docs/architecture.md`
+- Backend Go: `.docs/backend.md`
+- Contrato API: `.docs/api.md`
+- Inventario/lista de precios: `.docs/modulos/Inventario.md`
+- Reglas de negocio: `.docs/reglas-negocio.md`

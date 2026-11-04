@@ -1,7 +1,6 @@
 // use prisma-8
 
 // Prisma 8 RC
-// Decimal sin precisión
 // DateTime con @default(now())
 // Uuid nativo
 //

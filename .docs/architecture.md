@@ -1,961 +1,141 @@
 # Arquitectura del Sistema — TechService
 
-# Visión General
+## Visión general
 
-TechService es un sistema de gestión integral para empresas de servicio técnico implementado como una Progressive Web App (PWA).
+TechService mantiene una aplicación web/PWA para Administración y Técnicos, con un backend independiente en Go. Next.js se ocupa de la interfaz; Go concentra la autenticación, autorización, reglas de negocio y acceso a los servicios de datos.
 
-La aplicación utiliza un monolito Full Stack construido con Next.js App Router.
+Supabase PostgreSQL es la fuente oficial de información. Supabase Storage almacena fotografías y otros archivos. El backend usa SQL directamente, sin ORM. El navegador no se conecta a PostgreSQL ni recibe credenciales privilegiadas de Supabase.
 
-La PWA constituye la interfaz principal utilizada por administradores y técnicos desde PC, tablet y dispositivos móviles.
+## Estado actual y arquitectura objetivo
 
-La arquitectura separa claramente:
+El código actual todavía ejecuta lógica en Next.js y accede a datos mediante Prisma desde páginas del servidor y Route Handlers. El repositorio backend Go separado y su API aún no existen. Esto describe el estado a migrar, no la arquitectura objetivo.
 
-- Presentación
-- Cliente
-- Lógica de negocio
-- Persistencia
-- Integraciones externas
+La migración se realiza por funcionalidad: implementar y validar la capacidad en Go, cambiar la interfaz para consumirla y retirar el código equivalente obsoleto de Next.js. Las reglas funcionales aprobadas en `.docs/reglas-negocio.md` son la fuente del comportamiento objetivo; el código actual no se copia automáticamente cuando las contradice.
 
-La base de datos PostgreSQL constituye la fuente oficial de verdad del sistema.
+## Stack objetivo
 
----
+### Interfaz
 
-# Objetivos de la Arquitectura
+- Next.js App Router, React y TypeScript.
+- Tailwind CSS y componentes de interfaz del proyecto.
+- PWA para uso desde desktop, tablet y teléfonos.
+- La interfaz puede renderizar vistas desde el servidor, pero toda lectura o escritura de negocio debe obtenerse desde la API Go.
 
-La arquitectura debe cumplir los siguientes principios:
+### Backend
 
-- Escalable.
-- Modular.
-- Fácil de mantener.
-- Integrable con servicios externos.
-- Preparada para crecimiento.
-- Bajo acoplamiento entre módulos.
-- Separación clara entre interfaz, negocio y persistencia.
+- Go en un repositorio independiente del frontend, documentado actualmente en `docs/backend/` y destinado al repositorio `technical-service-backend`.
+- API HTTP responsable de autenticación, autorización, validación y reglas de negocio.
+- Acceso a PostgreSQL mediante SQL y un driver de Go, sin ORM.
+- Resend como servicio de correo para recuperación de contraseña.
 
-El sistema debe poder incorporar nuevos módulos sin modificar innecesariamente la estructura existente.
+### Datos y archivos
 
----
+- Supabase PostgreSQL: persistencia transaccional y fuente oficial de verdad.
+- Supabase Storage: objetos binarios, incluyendo fotografías y comprobantes.
+- SQL versionado y migraciones para la evolución del esquema.
 
-# Stack Tecnológico
-
-## Frontend
-
-- Next.js App Router
-- React
-- TypeScript
-- Context para necesidades simples
-- Zustand como almacén centralizado
-- TailwindCSS
-- shadcn/ui
-- Radix UI
-
-## Reactividad
-
-RxJS deberá utilizarse únicamente cuando exista una necesidad real de programación reactiva basada en streams u observables.
-
-RxJS no es un requisito para implementar Push Notifications.
-
-Las notificaciones Push utilizarán Web Push y Service Worker.
-
----
-
-# Backend
-
-- Next.js App Router
-- Server Components
-- Server Actions
-- Route Handlers
-- Middleware
-- Zod
-- bcrypt
-- Autenticación y autorización
-- Manejo centralizado de errores
-- Logging
-
----
-
-# Base de Datos
-
-- PostgreSQL
-- Supabase
-- supabase storage (para guardar imagenes)
-- Prisma 8 ORM
-
-Supabase PostgreSQL constituye la fuente oficial de verdad del sistema.
-
-Prisma es responsable del acceso de la aplicación a PostgreSQL.
-
-Prisma se ejecuta exclusivamente en el servidor.
-
-El navegador nunca debe ejecutar Prisma directamente.
-
-# 3 storrage en supabase`
-
-Storage — TechService
-
-## Proveedor
-
-El almacenamiento principal de archivos utilizará Supabase Storage.
-
-PostgreSQL no se utilizará para almacenar directamente archivos binarios grandes.
-
----
-
-# Principios de Rendimiento
-
-La arquitectura deberá diseñarse para permitir crecimiento del volumen de datos y usuarios sin modificar el monolito principal.
-
-La aplicación deberá utilizar:
-
-- Consultas selectivas.
-- Paginación.
-- Índices adecuados.
-- Separación entre datos operativos y archivos.
-- Carga diferida de información pesada.
-- Almacenamiento externo para archivos y fotografías.
-
-El volumen de datos no debe considerarse una razón suficiente para introducir microservicios.
-
-## Organización
-
-Los archivos deberán organizarse por entidad.
-
-Ejemplo:
+## Diagrama lógico
 
 ```text
-services/
-  {serviceId}/
-    photos/
-      {uuid}.webp
-      {uuid}_thumb.webp
+                         Navegador / PWA
+                         ├── Interfaz Next.js
+                         ├── IndexedDB (caché/cola offline)
+                         └── HTTPS para operaciones de negocio
+                                      │
+                                      ▼
+                                  API Go
+                     ┌────────────────┼─────────────────┐
+                     │                │                 │
+                     ▼                ▼                 ▼
+          Supabase PostgreSQL  Supabase Storage       Resend
+            SQL sin ORM       archivos autorizados  recuperación
 ```
 
----
+El frontend puede obtener datos para renderizado del servidor o desde el navegador, pero ambos caminos consumen la API Go. Next.js no funciona como BFF ni como capa de negocio. No se deben implementar operaciones de negocio duplicadas en Server Actions o Route Handlers de Next.js.
 
-# Performance — TechService
+## Límites de responsabilidad
 
-## Objetivo
+### Next.js y la PWA
 
-El sistema debe mantener tiempos de respuesta adecuados a medida que aumentan:
+- Presentar pantallas y formularios según el rol.
+- Solicitar operaciones de negocio a Go.
+- Mostrar estados de conectividad y sincronización.
+- Mantener en IndexedDB únicamente los datos necesarios para el uso offline y su cola temporal.
+- No consultar PostgreSQL ni ejecutar Prisma.
+- No decidir autorización ocultando controles: la API valida cada petición.
 
-- usuarios
-- servicios
-- clientes
-- fotografías
-- presupuestos
-- cobros
-- rendiciones
-- historial
+### API Go
 
-## Base de datos
+- Administrar el login con contraseña y la sesión.
+- Enviar correos de recuperación mediante Resend y validar los tokens de un solo uso.
+- Validar rol, propiedad y transiciones permitidas para cada operación.
+- Ejecutar reglas de negocio y acceso a datos mediante SQL parametrizado.
+- Autorizar operaciones de archivos y coordinar URLs firmadas de Supabase Storage.
+- Producir errores explícitos y registrar eventos relevantes.
+- Mantener idempotentes las operaciones que pueden reintentarse por sincronización offline.
 
-Las consultas deberán solicitar únicamente la información necesaria.
+### Supabase
 
-Evitar:
+- PostgreSQL almacena los datos oficiales.
+- Storage almacena archivos; la base de datos conserva las rutas y metadatos necesarios.
+- Las credenciales privilegiadas permanecen únicamente en el backend.
+- La autenticación propia de Go no crea automáticamente un contexto de Supabase Auth. RLS solo es una defensa adicional si se diseña y verifica cómo propagar la identidad al motor; la autorización de Go sigue siendo obligatoria.
 
-```sql
-SELECT *
-FROM tabla;
-```
+## Acceso a datos y migraciones
 
-cuando la tabla pueda contener grandes cantidades de registros.
+Las consultas SQL se mantienen en la capa de persistencia del backend, no en handlers HTTP ni en componentes de Next.js. Las consultas deben parametrizar valores, solicitar las columnas requeridas, paginar listados grandes y definir índices según los filtros reales.
 
-Las consultas deberán:
+Los cambios de esquema se entregan mediante migraciones SQL versionadas junto al backend. El contrato Prisma y sus artefactos generados pertenecen al estado actual y no son la fuente de esquema para el backend Go.
 
-utilizar filtros
-utilizar paginación
-utilizar índices
-evitar N+1 queries
-seleccionar únicamente las columnas necesarias
-evitar traer grandes volúmenes de información innecesariamente
-Paginación
+## Autenticación y autorización
 
-Las listas grandes deberán utilizar paginación.
+Go es responsable del login con contraseña, la sesión y la autorización por rol y propiedad del recurso. Resend se usa para la entrega de recuperación de contraseña, no como proveedor de autenticación. La interfaz nunca debe confiar en un rol recibido del cliente ni en el hecho de que una ruta esté oculta.
 
-Ejemplos:
+Las cookies, CORS y protecciones CSRF deben configurarse de acuerdo con los dominios de frontend y API. Ver `.docs/backend.md` para las responsabilidades del backend y `.docs/api.md` para el contrato HTTP.
 
-servicios
-clientes
-presupuestos
-cobros
-rendiciones
-inventario
-historial
+## Storage de archivos
 
-No se deberán cargar todos los registros de una tabla grande al navegador.
-
-Índices
-
-Los campos utilizados frecuentemente en:
-
-WHERE
-JOIN
-ORDER BY
-búsquedas
-filtros
-
-deberán evaluarse para indexación.
-
-Los índices deberán basarse en patrones reales de consulta y no agregarse indiscriminadamente.
-
-N+1
-
-Se deberá evitar realizar consultas individuales repetitivas para cada registro de una colección.
-
-Las relaciones necesarias deberán resolverse mediante consultas eficientes.
-
-Imágenes
-
-Las imágenes no deberán almacenarse dentro de PostgreSQL.
-
-La base de datos deberá almacenar únicamente:
-
-identificador
-ruta
-nombre
-tipo
-tamaño
-metadatos necesarios
-
-El archivo físico deberá almacenarse en Supabase Storage.
-
-Carga de imágenes
-
-Las imágenes deberán optimizarse antes o durante su almacenamiento.
-
-Se deberán considerar:
-
-compresión
-redimensionamiento
-formatos modernos
-thumbnails
-carga diferida
-
-Una lista no deberá descargar imágenes originales innecesariamente.
-
-# ORM
-
-La persistencia utilizará Prisma.
-
-Toda lectura o escritura realizada por la aplicación deberá respetar la capa de persistencia.
-
-La lógica de acceso a datos no deberá estar dispersa dentro de componentes de interfaz.
-
-# Seguridad de Base de Datos
-
-La base de datos utilizará Row Level Security (RLS).
-
-Las políticas de seguridad deberán impedir que un usuario acceda a información que no corresponde a su rol o alcance.
-
-La seguridad de autorización debe existir tanto en la aplicación como en la base de datos cuando corresponda.
-
----
-
-# Cache
-
-Se utilizarán mecanismos de caché de Next.js únicamente cuando sean compatibles con la naturaleza de los datos.
-
-La información dinámica y sensible no deberá almacenarse mediante mecanismos de caché que puedan provocar datos obsoletos o filtraciones entre usuarios.
-
----
-
-# Arquitectura General
-
-```text
-                         INTERNET
-                            │
-                            ▼
-                       Navegador / PWA
-                            │
-                           HTTPS
-                            │
-                ┌───────────┴───────────┐
-                │                       │
-         Server Components       Client Components
-                │                       │
-                │                Service Worker
-                │                       │
-                │                    IndexedDB
-                │
-                └───────────┬───────────┘
-                            │
-               Server Actions / Route Handlers
-                            │
-                            ▼
-                    Capa de negocio
-                            │
-                            ▼
-                     Capa de persistencia
-                            │
-                         Prisma
-                            │
-                            ▼
-                  Supabase PostgreSQL
-```
-
-La infraestructura que ejecuta el monolito se define en `infrastructure.md`.
-
-La arquitectura lógica del sistema no depende de un proveedor específico de infraestructura.
-
----
-
-# Capas
-
-## Presentación
-
-Responsable de la interfaz.
-
-Incluye:
-
-- páginas
-- layouts
-- componentes
-- formularios
-- estados visuales
-- navegación
-
----
-
-## Cliente
-
-Responsable de la experiencia interactiva en el navegador.
-
-Incluye:
-
-- Client Components
-- Zustand
-- Context
-- Service Worker
-- IndexedDB
-- estado de conectividad
-- cola de sincronización
-- funcionalidades PWA
-
----
-
-## Negocio
-
-Implementa las reglas definidas en:
-
-```text
-.docs/reglas-negocio.md
-```
-
-Toda funcionalidad nueva debe respetar dicho documento.
-
-La lógica de negocio no debe depender directamente de componentes visuales.
-
----
-
-## Persistencia
-
-Responsable del acceso a la base de datos.
-
-Utiliza:
-
-```text
-Prisma
-    ↓
-Supabase PostgreSQL
-```
-
-Toda lectura y escritura debe pasar por la capa correspondiente de persistencia.
-
----
+Los archivos se almacenan en Supabase Storage; PostgreSQL conserva identificadores, rutas y metadatos, no binarios grandes. Go verifica permisos y emite URLs firmadas de duración limitada para carga o descarga. Ver `.docs/storage.md`.
 
 ## Integraciones
 
-Responsable de comunicarse con servicios externos.
+Las integraciones se mantienen desacopladas de los módulos del negocio y se coordinan desde el backend:
 
-Actualmente:
+- Google Sheets puede exportar la agenda como vista externa.
+- Administración puede importar una lista de precios desde Sheets; el catálogo solo se publica al completarse correctamente la importación.
+- WhatsApp genera un mensaje para que el usuario lo copie o abra; el sistema no envía mensajes automáticamente.
+- Resend entrega correos de recuperación de contraseña.
 
-- Google Sheets
-- APIs externas
+Una falla de integración no debe borrar información ni convertir el servicio externo en fuente oficial de datos. Los flujos de Sheets se especifican en `.docs/integraciones/googlesheets.md`.
 
-Las integraciones deberán permanecer desacopladas del resto del sistema.
+## PWA y operación offline
 
----
+El Service Worker gestiona recursos estáticos y capacidades PWA; no implementa reglas de negocio. IndexedDB conserva los datos autorizados que el técnico necesita y las operaciones pendientes.
 
-# Módulos del Sistema
+Al recuperar conexión, la cola envía operaciones a la API Go. El servidor valida estado, rol y propiedad; una operación local solo aparece confirmada tras una respuesta exitosa de Go. Cada reintento debe ser idempotente y los conflictos deben informarse, no resolverse silenciosamente. Ver `.docs/PWA.md`.
 
-```text
-Dashboard
+## Módulos funcionales
 
-Clientes
-
-Agenda
-
-Técnicos
-
-Servicios
-
-Rendiciones
-
-Presupuestos
-
-Inventario
-
-Integraciones
-
-```
-
-Cada módulo posee responsabilidades específicas y debe mantener bajo acoplamiento con los demás módulos.
-
----
-
-# Flujo General
-
-```text
-Administrador
-      ↓
-Crear Servicio
-      ↓
-Crear Cliente o buscar
-      ↓
-Asignar Técnico
-      ↓
-Agenda
-      ↓
-Técnico realiza la visita
-      ↓
-Cierre del servicio
-      ↓
-Cobro
-      ↓
-Presupuesto opcional
-      ↓
-Rendición
-      ↓
-Finalización
-```
-
----
-
-# Roles
-
-## Administrador
-
-Puede administrar completamente el sistema.
-
-Funciones:
-
+- Dashboard
 - Clientes
+- Agenda y servicios
 - Técnicos
-- Agenda
-- Cobros
+- Cobros y repuestos
 - Presupuestos
 - Rendiciones
-- Inventario
+- Inventario y listas de precios
+- Integraciones
 
----
+Las reglas de estos módulos se mantienen en `.docs/reglas-negocio.md` y los documentos específicos de `.docs/modulos/`. Esta arquitectura describe límites técnicos y no reemplaza las reglas funcionales aprobadas.
 
-## Técnico
+## Principios de rendimiento y evolución
 
-Solo puede acceder a la información correspondiente a su ámbito de trabajo.
+- Paginar servicios, clientes, cobros, presupuestos, rendiciones, inventario e historial.
+- Evitar consultas N+1, selecciones innecesarias y descargas de imágenes originales en listados.
+- Optimizar imágenes y usar carga diferida cuando corresponda.
+- No introducir microservicios solo por el crecimiento del volumen de datos.
+- Incorporar nuevas integraciones y módulos sin trasladar reglas de negocio al frontend.
 
-Puede:
+## Documentación y precedencia
 
-- visualizar agenda
-- cambiar estados
-- cerrar servicios
-- enviar presupuestos
-- registrar cobros
--
-- consultar rendiciones propias finalizadas
-
-Nunca debe poder administrar o consultar información perteneciente a otros técnicos cuando las reglas de negocio lo impidan.
-
----
-
-# Comunicación entre Módulos
-
-Los módulos utilizan la base de datos como fuente oficial de información.
-
-```text
-Clientes
-    ↓
-Servicios
-    ↓
-Cobros
-    ↓
-Presupuestos
-    ↓
-Rendiciones
-```
-
-Los módulos no deben establecer dependencias innecesarias entre sí.
-
-Cuando un módulo necesite información de otro, deberá utilizar las capas correspondientes del sistema.
-
----
-
-# Eventos del Sistema
-
-Todo cambio importante deberá generar un evento interno cuando corresponda.
-
-Ejemplos:
-
-- Servicio creado
-- Servicio actualizado
-- Servicio cancelado
-- Cobro registrado
-- Presupuesto enviado
-- Rendición generada
-
-Los eventos deberán diseñarse de manera que puedan utilizarse posteriormente para automatizaciones.
-
----
-
-# Integraciones
-
-Las integraciones no deben convertirse en la fuente principal de verdad del sistema.
-
-El flujo debe ser:
-
-```text
-Sistema
-   ↓
-Integración
-   ↓
-Servicio Externo
-```
-
-Las integraciones deberán consumir información del sistema mediante las capas correspondientes.
-
----
-
-# Google Sheets
-
-Google Sheets representa únicamente una vista externa de la agenda.
-
-Cada modificación realizada dentro de TechService puede sincronizar la información correspondiente.
-
-La sincronización puede producirse cuando:
-
-- se crea un servicio
-- cambia la fecha
-- cambia el técnico
-- cambia el estado
-- se cancela un servicio
-
-Google Sheets no constituye la fuente oficial de verdad.
-
-Google Sheets no deberá modificar directamente la información principal del sistema.
-
----
-
-# WhatsApp
-
-WhatsApp funciona como herramienta de comunicación.
-
-El sistema puede generar mensajes preparados para copiar y pegar.
-
-El usuario decide cuándo enviarlos.
-
-No existen envíos automáticos de WhatsApp dentro de la arquitectura actual.
-
----
-
-# Eventos y Automatización
-
-Los eventos internos deberán mantener la posibilidad de incorporar posteriormente:
-
-- Notificaciones Push
-- Automatizaciones
-- Integraciones adicionales
-- Inteligencia Artificial
-- Flujos automáticos
-
-Las automatizaciones no deben modificar directamente datos sin pasar por las reglas de negocio correspondientes.
-
----
-
-# PWA
-
-TechService se implementa como Progressive Web App.
-
-La PWA deberá permitir:
-
-- instalación
-- ejecución en modo standalone
-- experiencia responsive
-- mantenimiento de sesión
-- carga rápida
-- detección online/offline
-- funcionamiento offline cuando corresponda
-- sincronización posterior
-- futuras notificaciones Push
-
----
-
-# Service Worker
-
-El Service Worker es responsable de las capacidades PWA del cliente.
-
-Puede encargarse de:
-
-- cachear recursos estáticos
-- gestionar estrategias de caché
-- detectar determinados escenarios offline
-- participar en Push Notifications
-- participar en sincronización cuando corresponda
-
-El Service Worker no debe contener lógica de negocio.
-
----
-
-# Información Dinámica
-
-Los datos dinámicos y sensibles no deberán cachearse indiscriminadamente.
-
-Ejemplos:
-
-- Servicios
-- Clientes
-- Agenda
-- Técnicos
-- Presupuestos
-- Cobros
-- Rendiciones
-- Inventario
-
-La información deberá mantenerse aislada según usuario y rol.
-
----
-
-# Funcionamiento Offline
-
-El sistema debe diferenciar claramente entre:
-
-```text
-ONLINE
-```
-
-y:
-
-```text
-OFFLINE
-```
-
-La interfaz debe mostrar claramente el estado actual de conectividad.
-
----
-
-# Operaciones Offline del Técnico
-
-Cuando el técnico se encuentre sin conexión, la aplicación podrá trabajar con la información previamente sincronizada que sea necesaria.
-
-Debe contemplarse:
-
-- consultar servicios previamente sincronizados
-- consultar información necesaria del servicio
-- registrar cambios de estado
-- registrar cierre de servicio
-- registrar cobros
-- registrar repuestos utilizados
-- registrar información para presupuestos
-- guardar temporalmente operaciones pendientes
-
-Las operaciones offline no se consideran confirmadas por el servidor hasta que hayan sido sincronizadas correctamente.
-
----
-
-# Cola de Sincronización
-
-Las operaciones realizadas offline deberán almacenarse en una cola local.
-
-```text
-Usuario
-   ↓
-PWA
-   ↓
-¿Hay conexión?
-   ↓
-┌──────────────┐
-│              │
-Sí             No
-│              │
-↓              ↓
-Servidor    Storage local
-│              │
-↓              ↓
-Supabase    Cola de operaciones
-               │
-               ↓
-         Recupera conexión
-               │
-               ↓
-         Sincronización
-               │
-               ↓
-            Servidor
-```
-
-La cola deberá permitir:
-
-- identificar cada operación
-- generar un identificador único
-- registrar fecha de creación
-- registrar estado
-- reintentar operaciones fallidas
-- evitar duplicados
-- registrar errores
-
----
-
-# Idempotencia
-
-Toda operación que pueda ejecutarse mediante sincronización debe diseñarse considerando idempotencia.
-
-Si una operación se reenvía debido a un retry, el servidor no debe generar información duplicada.
-
-Ejemplo:
-
-```text
-Operación:
-Cerrar servicio #123
-
-operationId:
-550e8400-e29b-41d4-a716-446655440000
-```
-
-El servidor debe reconocer una operación ya procesada.
-
----
-
-# Fuente de Verdad
-
-La base de datos PostgreSQL en Supabase continúa siendo la única fuente oficial de verdad.
-
-```text
-Supabase PostgreSQL
-        ↑
-      Prisma
-        ↑
-   Next.js Server
-        ↑
-       PWA
-        ↓
-   IndexedDB local
-```
-
-El almacenamiento local representa únicamente un estado temporal, una caché de trabajo y una cola de operaciones pendientes.
-
-Los datos locales nunca deben considerarse definitivos.
-
----
-
-# Persistencia Local
-
-Para datos estructurados y operaciones pendientes se utilizará:
-
-```text
-IndexedDB
-```
-
-No se utilizará `localStorage` como base de datos de la aplicación.
-
-`localStorage` podrá utilizarse para:
-
-- preferencias visuales
-- configuración de UI
-- filtros no sensibles
-
-No se almacenarán:
-
-- contraseñas
-- secretos
-- credenciales administrativas
-- claves privadas
-- secretos de Supabase
-
----
-
-# Sincronización
-
-Cuando vuelva la conexión:
-
-```text
-Offline
-   ↓
-Operaciones pendientes
-   ↓
-Detectar conexión
-   ↓
-Enviar operaciones
-   ↓
-Validar
-   ↓
-Persistir en Supabase
-   ↓
-Confirmar operación
-   ↓
-Eliminar de cola
-   ↓
-Actualizar estado local
-```
-
-La sincronización debe ser resistente a:
-
-- pérdida de conexión
-- múltiples reintentos
-- cierre de aplicación
-- recarga de página
-- suspensión del dispositivo
-- operaciones duplicadas
-- errores de validación
-- conflictos
-
----
-
-# Conflictos de Datos
-
-La aplicación debe contemplar conflictos entre información local y datos existentes en el servidor.
-
-Los conflictos no deben resolverse silenciosamente.
-
-Cuando una operación offline no pueda aplicarse:
-
-1. Detectar el conflicto.
-2. Registrar la operación.
-3. Informar al usuario.
-4. Evitar pérdida silenciosa.
-5. Aplicar las reglas de negocio correspondientes.
-
-Las reglas concretas se definen en:
-
-```text
-.docs/reglas-negocio.md
-```
-
----
-
-# Estado de Conectividad
-
-La interfaz deberá representar claramente estados como:
-
-```text
-● Conectado
-```
-
-```text
-● Sin conexión
-```
-
-```text
-↻ Sincronizando...
-```
-
-```text
-✓ Todo sincronizado
-```
-
-```text
-⚠ Error de sincronización
-```
-
-El usuario deberá poder identificar si una operación:
-
-- fue enviada
-- está pendiente
-- está sincronizando
-- falló
-- fue confirmada
-
----
-
-# Notificaciones Push
-
-TechService queda preparado para incorporar Web Push Notifications.
-
-Podrán utilizarse para:
-
-- nuevos servicios asignados
-- cambios de agenda
-- cambios importantes
-- avisos administrativos
-- recordatorios
-- eventos relevantes
-
-Las notificaciones no deberán contener información sensible innecesaria.
-
-La implementación de Push deberá permanecer desacoplada de la lógica principal.
-
----
-
-# Seguridad PWA
-
-La PWA debe respetar las mismas políticas de seguridad que el sistema web.
-
-No deben almacenarse en el dispositivo:
-
-- contraseñas
-- secretos de Supabase
-- credenciales administrativas
-- claves privadas
-- tokens sensibles innecesarios
-- información innecesaria para el funcionamiento offline
-
-Las capacidades offline deben respetar el rol del usuario.
-
-Un técnico nunca debe obtener mediante caché local información perteneciente a otro técnico.
-
----
-
-# Instalación
-
-La aplicación deberá ser instalable como PWA en navegadores compatibles.
-
-Deberá funcionar correctamente en:
-
-- Desktop
-- Tablet
-- Mobile
-
-La interfaz debe ser responsive y estar especialmente adaptada al uso móvil de los técnicos.
-
----
-
-# Escalabilidad
-
-La arquitectura queda preparada para incorporar:
-
-- Notificaciones Push
-- Firma Digital
-- Historial de Equipos
-- Inteligencia Artificial
-- Portal del Cliente
-- Aplicación Móvil
-- Inventario avanzado
-- Nuevas integraciones
-
-La incorporación de nuevos módulos no deberá romper los límites establecidos entre capas.
-
----
-
-# Principios de Desarrollo
-
-Todo desarrollo nuevo deberá cumplir:
-
-- Código reutilizable.
-- Componentes desacoplados.
-- Separación entre UI y lógica.
-- Validaciones centralizadas.
-- APIs consistentes.
-- Modelos normalizados.
-- Tipado estricto.
-- Documentación obligatoria.
-- Respeto de las reglas de negocio.
-- Separación entre cliente y servidor.
-
----
-
-# Documentación
-
-La carpeta `.docs` representa la especificación oficial del proyecto.
-
-Toda modificación funcional debe comenzar actualizando la documentación correspondiente.
-
-La implementación del código deberá respetar dicha documentación.
-
-La documentación tiene prioridad sobre la implementación existente cuando ambas entren en conflicto, siempre que el cambio haya sido aprobado.
+La carpeta `.docs` contiene la especificación del sistema. Las reglas funcionales aprobadas describen el comportamiento esperado; la arquitectura define responsabilidades técnicas. Cuando una implementación existente contradiga una regla aprobada, no se debe trasladar automáticamente la contradicción al backend Go.
