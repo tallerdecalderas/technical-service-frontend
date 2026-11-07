@@ -1,64 +1,43 @@
+import "server-only";
+
 import { cookies } from "next/headers";
-import { db } from "../lib/prisma";
 import type { SessionUser } from "@/types";
+import { getAuthAPIURL } from "@/lib/auth-api";
 
-const SESSION_COOKIE = "tech-service-session";
+const SESSION_COOKIE = process.env.SESSION_COOKIE_NAME ?? "tech-service-session";
 
-import { compare } from "bcrypt";
-
-export async function validateCredentials(
-  email: string,
-  password: string
-): Promise<SessionUser | null> {
-  const user = await db.orm.public.User.first({ email });
-  if (!user || !user.isActive) return null;
-
-  // Verify password using bcrypt
-  // Note: user.passwordHash needs to be present in the user record
-  const isValid = await compare(password, user.passwordHash);
-  if (!isValid) return null;
-
-  return {
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    role: user.role,
-    avatar: user.avatar,
-  };
-}
-
-export async function createSession(user: SessionUser): Promise<void> {
-  const cookieStore = await cookies();
-  // In production, use JWT or secure session token
-  const sessionData = JSON.stringify(user);
-  const encoded = Buffer.from(sessionData).toString("base64");
-
-  cookieStore.set(SESSION_COOKIE, encoded, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 7, // 7 days
-    path: "/",
-  });
+interface SessionResponse {
+  success: boolean;
+  data?: SessionUser;
 }
 
 export async function getSession(): Promise<SessionUser | null> {
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get(SESSION_COOKIE);
-
   if (!sessionCookie?.value) return null;
 
-  try {
-    const decoded = Buffer.from(sessionCookie.value, "base64").toString();
-    return JSON.parse(decoded) as SessionUser;
-  } catch {
-    return null;
+  const response = await fetch(`${getAuthAPIURL()}/api/v1/auth/session`, {
+    headers: {
+      cookie: `${SESSION_COOKIE}=${encodeURIComponent(sessionCookie.value)}`,
+    },
+    cache: "no-store",
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (response.status === 401) return null;
+  if (!response.ok) {
+    throw new Error(`Authentication service returned HTTP ${response.status}`);
   }
-}
-
-export async function clearSession(): Promise<void> {
-  const cookieStore = await cookies();
-  cookieStore.delete(SESSION_COOKIE);
+  const result = (await response.json()) as SessionResponse;
+  const user = result.data;
+  if (
+    !result.success ||
+    !user?.id ||
+    !user.email ||
+    (user.role !== "ADMIN" && user.role !== "TECHNICIAN")
+  ) {
+    throw new Error("Authentication service returned an invalid session");
+  }
+  return user;
 }
 
 export async function requireAuth(): Promise<SessionUser> {

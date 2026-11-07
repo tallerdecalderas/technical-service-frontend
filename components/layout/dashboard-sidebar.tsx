@@ -1,5 +1,7 @@
 "use client"
 
+"use client"
+
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import {
@@ -25,6 +27,7 @@ import {
   LogOut,
   ClipboardList,
 } from "lucide-react"
+import { useState } from "react"
 import type { SessionUser } from "@/types"
 
 interface DashboardSidebarProps {
@@ -127,18 +130,42 @@ export function DashboardSidebar({ user }: DashboardSidebarProps) {
 }
 
 function LogoutButton() {
+  const [error, setError] = useState("")
+
   async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" })
-    window.location.href = "/login"
+    setError("")
+    const csrfCookieName = process.env.NEXT_PUBLIC_CSRF_COOKIE_NAME ?? "tech-service-csrf"
+    const csrfCookie = document.cookie
+      .split("; ")
+      .find((cookie) => cookie.startsWith(`${csrfCookieName}=`))
+    const csrfToken = csrfCookie ? decodeURIComponent(csrfCookie.slice(csrfCookieName.length + 1)) : ""
+
+    try {
+      const response = await fetch("/api/auth/logout", {
+        method: "POST",
+        headers: csrfToken ? { "X-CSRF-Token": csrfToken } : {},
+      })
+      if (!response.ok) {
+        setError("No se pudo cerrar la sesión. Inténtalo nuevamente.")
+        return
+      }
+      window.location.href = "/login"
+    } catch {
+      setError("No se pudo cerrar la sesión. Inténtalo nuevamente.")
+    }
   }
 
   return (
-    <button
-      onClick={handleLogout}
-      className="rounded-md p-2 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-      title="Cerrar sesión"
-    >
-      <LogOut className="h-4 w-4" />
-    </button>
+    <div className="flex flex-col items-end">
+      <button
+        onClick={handleLogout}
+        className="rounded-md p-2 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+        title="Cerrar sesión"
+        aria-label="Cerrar sesión"
+      >
+        <LogOut className="h-4 w-4" />
+      </button>
+      {error && <span className="text-xs text-destructive">{error}</span>}
+    </div>
   )
 }

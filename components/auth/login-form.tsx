@@ -3,6 +3,7 @@
 import type React from "react";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,7 +44,6 @@ export function LoginForm() {
         return;
       }
 
-      // Redirect based on role
       if (data.data.role === "ADMIN") {
         router.push("/admin/dashboard");
       } else {
@@ -111,18 +111,10 @@ export function LoginForm() {
             )}
           </Button>
 
-          <div className="mt-4 p-3 bg-muted rounded-lg text-sm">
-            <p className="font-medium mb-2">Credenciales de prueba:</p>
-            <div className="space-y-1 text-muted-foreground">
-              <p>
-                <span className="font-medium">Admin:</span>{" "}
-                admin@taller de calderas.com / admin123
-              </p>
-              <p>
-                <span className="font-medium">Técnico:</span>{" "}
-                lopez@taller de calderas.com / tech123
-              </p>
-            </div>
+          <div className="text-center text-sm">
+            <Link href="/forgot-password" className="text-primary underline-offset-4 hover:underline">
+              ¿Olvidaste tu contraseña?
+            </Link>
           </div>
         </form>
       </CardContent>

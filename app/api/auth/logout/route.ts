@@ -1,12 +1,13 @@
-import { NextResponse } from "next/server"
-import { clearSession } from "@/lib/auth"
+import { NextResponse, type NextRequest } from "next/server"
+import { forwardAuthRequest } from "@/lib/auth-api"
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
-    await clearSession()
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error("Logout error:", error)
-    return NextResponse.json({ success: false, error: "Error al cerrar sesión" }, { status: 500 })
+    return await forwardAuthRequest(request, "logout", "POST")
+  } catch {
+    return NextResponse.json(
+      { success: false, error: "El servicio de autenticación no está disponible." },
+      { status: 502 }
+    )
   }
 }

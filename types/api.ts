@@ -20,4 +20,5 @@ export interface SessionUser {
   name: string | null;
   role: Role;
   avatar?: string | null;
+  companies?: Array<{ id: string }>;
 }
