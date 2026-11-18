@@ -1,8 +1,14 @@
-import type { FieldOutputTypes } from "@/generated/prisma8/contract";
-
 // ─── Tipos base ───────────────────────────────────────────────────────────────
 
-export type UserRow = FieldOutputTypes["public"]["User"];
+export type UserRow = {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  avatar: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 

@@ -1,6 +1,7 @@
 /**
  * Payment Service (Cobros) — taller de calderas
- * Documentación: .docs/modulos/services.md, .docs/reglas-negocio.md
+ * Ahora consume la API Go en lugar de Prisma.
+ * Documentación: docs/reglas-negocio.md, docs/api.md
  *
  * Reglas clave:
  * - Cada servicio puede tener UN ÚNICO cobro.
@@ -8,9 +9,13 @@
  * - Los repuestos ya NO pertenecen al cobro → ver service-part.service.ts
  * - Solo técnicos asignados pueden registrar cobros.
  */
-import { db } from "@/lib/prisma";
-import { logActivity, ACTIONS } from "./activity-log.service";
-import { toInstant } from "@/lib/utils";
+
+import { apiClient } from "@/lib/api-client";
+import {
+  adaptPayment,
+  adaptPaymentDetail,
+  adaptPaymentList,
+} from "@/lib/adapters/payment.adapter";
 import type { Payment, PaymentFilters, SessionUser } from "@/types";
 import type { z } from "zod";
 import type {
@@ -21,110 +26,100 @@ import type {
 export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;
 export type UpdatePaymentInput = z.infer<typeof updatePaymentSchema>;
 
-function applyFullInclude(query: any) {
-  return query
-    .include("service", (s: any) =>
-      s.include("client", (c: any) => c)
-       .include("company", (c: any) => c)
-       .include("category", (c: any) => c)
-    )
-    .include("technician", (t: any) =>
-      t.select(
-        "id", "name", "email", "phone", "role",
-        "isActive", "avatar", "createdAt", "updatedAt"
-      )
-    );
-}
-
 export async function listPayments(
   filters: PaymentFilters,
   session: SessionUser,
 ): Promise<Payment[]> {
-  let query: any = db.orm.public.Payment;
+  const params: Record<string, string> = {};
 
   // Técnicos solo ven sus propios cobros
   if (session.role === "TECHNICIAN") {
-    query = query.where({ technicianId: session.id });
+    params.technicianId = session.id;
   } else {
     if (filters.technicianId) {
-      query = query.where({ technicianId: filters.technicianId });
+      params.technicianId = filters.technicianId;
     }
   }
 
   if (filters.dateFrom) {
-    query = query.where((p: any) => p.createdAt.gte(toInstant(filters.dateFrom!)));
+    params.dateFrom = filters.dateFrom;
   }
   if (filters.dateTo) {
-    query = query.where((p: any) => p.createdAt.lte(toInstant(filters.dateTo!)));
+    params.dateTo = filters.dateTo;
   }
 
-  return applyFullInclude(query)
-    .orderBy((p: any) => p.createdAt.desc())
-    .all() as unknown as Promise<Payment[]>;
+  const response = await apiClient.get<{
+    payments: any[];
+    meta: { page: number; pageSize: number; total: number; totalPages: number };
+  }>("/payments", params);
+
+  if (!response.success) {
+    throw new Error(response.error?.message || "Error al listar cobros");
+  }
+
+  const adapted = adaptPaymentList(response as any);
+  return adapted.payments;
 }
 
 export async function getPaymentById(
   id: string,
   session: SessionUser,
 ): Promise<Payment | null> {
-  const payment = await applyFullInclude(db.orm.public.Payment).first({ id });
+  const response = await apiClient.get<{ payment: any }>(`/payments/${id}`);
 
-  if (!payment) return null;
+  if (!response.success) {
+    if (response.error?.code === "NOT_FOUND") return null;
+    throw new Error(response.error?.message || "Error al obtener cobro");
+  }
+
+  const payment = adaptPaymentDetail(response as any);
 
   // Técnico solo puede ver sus propios cobros
-  if (session.role === "TECHNICIAN" && payment.technicianId !== session.id) {
+  if (session.role === "TECHNICIAN" && payment?.technicianId !== session.id) {
     throw new Error("Sin permisos para ver este cobro");
   }
 
-  return payment as unknown as Payment;
+  return payment;
 }
 
 export async function getPaymentByService(
   serviceId: string,
 ): Promise<Payment | null> {
-  return applyFullInclude(db.orm.public.Payment).first({ serviceId }) as unknown as Promise<Payment | null>;
+  const response = await apiClient.get<{ payment: any }>(
+    `/payments?serviceId=${serviceId}`
+  );
+
+  if (!response.success) {
+    if (response.error?.code === "NOT_FOUND") return null;
+    throw new Error(response.error?.message || "Error al obtener cobro por servicio");
+  }
+
+  if (!response.data || response.data.length === 0) return null;
+  return adaptPayment(response.data[0]);
 }
 
 export async function createPayment(
   data: CreatePaymentInput,
   session: SessionUser,
+  idempotencyKey?: string
 ): Promise<Payment> {
-  const service = await db.orm.public.Service.first({ id: data.serviceId });
-  if (!service) throw new Error("Orden no encontrada");
-
-  // Técnico solo puede cobrar sus propias órdenes
-  if (session.role === "TECHNICIAN" && service.technicianId !== session.id) {
-    throw new Error(
-      "Sin permisos: solo podés registrar cobros de tus propias órdenes",
-    );
-  }
-
-  // Verificar cobro duplicado
-  const existingPayment = await db.orm.public.Payment.first({ serviceId: data.serviceId });
-  if (existingPayment)
-    throw new Error("Esta orden ya tiene un cobro registrado");
-
-  const created = await db.orm.public.Payment.create({
-    serviceId: data.serviceId,
-    technicianId: data.technicianId,
-    method: data.method,
-    amountPaid: data.amountPaid.toString(),
-    debtAmount: (data.debtAmount ?? 0).toString(),
-  });
-
-  await logActivity(
-    data.serviceId,
-    session.id,
-    ACTIONS.PAYMENT_CREATED,
-    "Cobro registrado",
+  const response = await apiClient.post<{ payment: any }, CreatePaymentInput>(
+    "/payments",
     {
-      amountPaid: data.amountPaid,
+      serviceId: data.serviceId,
+      technicianId: data.technicianId,
       method: data.method,
-      debtAmount: data.debtAmount ?? 0,
+      amountPaid: data.amountPaid,
+      debtAmount: data.debtAmount || null,
     },
+    { idempotencyKey }
   );
 
-  return applyFullInclude(db.orm.public.Payment).first({ id: created.id }) as unknown as Promise<Payment>;
+  if (!response.success) {
+    throw new Error(response.error?.message || "Error al crear cobro");
+  }
+
+  return adaptPayment(response.data.payment);
 }
 
 /**
@@ -135,29 +130,24 @@ export async function updatePayment(
   id: string,
   data: UpdatePaymentInput,
   session: SessionUser,
+  idempotencyKey?: string
 ): Promise<Payment> {
   if (session.role !== "ADMIN")
     throw new Error("Solo un Administrador puede modificar cobros");
 
-  const existing = await db.orm.public.Payment.first({ id });
-  if (!existing) throw new Error("Cobro no encontrado");
-
-  const updateData: any = {};
-  if (data.method) updateData.method = data.method;
-  if (data.amountPaid !== undefined) updateData.amountPaid = data.amountPaid.toString();
-  if (data.debtAmount !== undefined) updateData.debtAmount = data.debtAmount.toString();
-
-  await db.orm.public.Payment.where({ id }).update(updateData);
-
-  const updated = await applyFullInclude(db.orm.public.Payment).first({ id });
-
-  await logActivity(
-    existing.serviceId,
-    session.id,
-    ACTIONS.PAYMENT_UPDATED,
-    "Cobro actualizado",
-    { amountPaid: updated.amountPaid, debtAmount: updated.debtAmount },
+  const response = await apiClient.patch<{ payment: any }, UpdatePaymentInput>(
+    `/payments/${id}`,
+    {
+      method: data.method,
+      amountPaid: data.amountPaid !== undefined ? data.amountPaid : undefined,
+      debtAmount: data.debtAmount !== undefined ? data.debtAmount || null : undefined,
+    },
+    { idempotencyKey }
   );
 
-  return updated as unknown as Payment;
+  if (!response.success) {
+    throw new Error(response.error?.message || "Error al actualizar cobro");
+  }
+
+  return adaptPayment(response.data.payment);
 }

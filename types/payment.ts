@@ -1,4 +1,3 @@
-import type { FieldOutputTypes } from "@/generated/prisma8/contract";
 import type { Service } from "./service";
 import type { User } from "./user";
 import type { Settlement } from "./settlement";
@@ -6,7 +5,16 @@ import type { SettlementItem } from "./settlement-item";
 
 // ─── Tipos base ───────────────────────────────────────────────────────────────
 
-export type PaymentRow = FieldOutputTypes["public"]["Payment"];
+export type PaymentRow = {
+  id: string;
+  serviceId: string;
+  technicianId: string;
+  method: string;
+  amountPaid: number;
+  debtAmount: number | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 

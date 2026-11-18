@@ -1,12 +1,12 @@
 /**
- * InventoryItem Service — taller de calderas
- * Documentación: .docs/modulos/Inventario.md, .docs/reglas-negocio.md
+ * InventoryItem Service (Ítems de Inventario) — taller de calderas
+ * Ahora consume la API Go en lugar de Prisma.
+ * Documentación: docs/modulos/Inventario.md, docs/reglas-negocio.md
  *
  * Catálogo de repuestos perteneciente a cada empresa.
- * Al importar desde Google Sheets se calculan costPrice y sellPrice.
- * Cuando un InventoryItem se usa en un ServicePart se hace snapshot de sus precios.
  */
-import { db } from "@/lib/prisma";
+
+import { apiClient } from "@/lib/api-client";
 import type { InventoryItem, InventoryItemFilters, SessionUser } from "@/types";
 import type { z } from "zod";
 import type {
@@ -19,98 +19,166 @@ export type UpdateInventoryItemInput = z.infer<typeof updateInventoryItemSchema>
 
 export async function listInventoryItems(
     filters: InventoryItemFilters,
+    session?: SessionUser,
 ): Promise<InventoryItem[]> {
-    let query: any = db.orm.public.InventoryItem;
+    const params: Record<string, string> = {};
 
-    if (filters.companyId) {
-        query = query.where({ companyId: filters.companyId });
-    }
-    if (filters.isActive !== undefined) {
-        query = query.where({ isActive: filters.isActive });
-    }
-    
-    let baseQuery = query.include("company", (c: any) => c);
+    if (filters.companyId) params.companyId = filters.companyId;
+    if (filters.isActive !== undefined) params.isActive = String(filters.isActive);
+    if (filters.search) params.search = filters.search;
 
-    if (filters.search) {
-        const s = `%${filters.search}%`;
-        const q1 = await baseQuery.where((m: any) => m.name.ilike(s)).all();
-        const q2 = await baseQuery.where((m: any) => m.code.ilike(s)).all();
-        
-        const merged = [...(q1 as any[]), ...(q2 as any[])];
-        const unique = Array.from(new Map(merged.map(item => [item.id, item])).values());
-        
-        return unique.sort((a: any, b: any) => a.name.localeCompare(b.name)) as unknown as InventoryItem[];
+    const response = await apiClient.get<{ items: any[] }>("/catalog/items", params);
+
+    if (!response.success) {
+        throw new Error(response.error?.message || "Error al listar ítems de inventario");
     }
 
-    return baseQuery
-        .orderBy((c: any) => c.name.asc())
-        .all() as unknown as Promise<InventoryItem[]>;
+    return (response.data?.items || []).map((i: any) => ({
+        id: i.id,
+        companyId: i.companyId,
+        code: i.code,
+        name: i.name,
+        unit: i.unit || null,
+        stock: i.stock,
+        costInitList: i.costInitList,
+        costPrice: i.costPrice,
+        sellPrice: i.sellPrice,
+        techPrice: i.techPrice,
+        marginPercent: i.marginPercent,
+        isActive: i.isActive,
+        createdAt: new Date(i.createdAt),
+        updatedAt: new Date(i.updatedAt),
+    }) as unknown as InventoryItem);
 }
 
 export async function getInventoryItemById(
     id: string,
+    session?: SessionUser,
 ): Promise<InventoryItem | null> {
-    return db.orm.public.InventoryItem
-        .include("company", (c: any) => c)
-        .first({ id }) as unknown as Promise<InventoryItem | null>;
+    const response = await apiClient.get<{ item: any }>(`/catalog/items/${id}`);
+
+    if (!response.success) {
+        if (response.error?.code === "NOT_FOUND") return null;
+        throw new Error(response.error?.message || "Error al obtener ítem de inventario");
+    }
+
+    const i = response.data.item;
+    return {
+        id: i.id,
+        companyId: i.companyId,
+        code: i.code,
+        name: i.name,
+        unit: i.unit || null,
+        stock: i.stock,
+        costInitList: i.costInitList,
+        costPrice: i.costPrice,
+        sellPrice: i.sellPrice,
+        techPrice: i.techPrice,
+        marginPercent: i.marginPercent,
+        isActive: i.isActive,
+        createdAt: new Date(i.createdAt),
+        updatedAt: new Date(i.updatedAt),
+    } as unknown as InventoryItem;
 }
 
 export async function createInventoryItem(
     data: CreateInventoryItemInput,
     session: SessionUser,
+    idempotencyKey?: string
 ): Promise<InventoryItem> {
     if (session.role !== "ADMIN")
         throw new Error("Solo un Administrador puede crear ítems de inventario");
 
-    const created = await db.orm.public.InventoryItem.create({
-        companyId: data.companyId,
-        code: data.code,
-        name: data.name,
-        unit: data.unit ?? null,
-        stock: data.stock ?? 0,
-        costInitList: data.costInitList.toString(),
-        costPrice: data.costPrice.toString(),
-        sellPrice: data.sellPrice.toString(),
-        techPrice: data.techPrice.toString(),
-        marginPercent: data.marginPercent?.toString() ?? "0",
-        isActive: true,
-    });
-    
-    return db.orm.public.InventoryItem
-        .include("company", (c: any) => c)
-        .first({ id: created.id }) as unknown as Promise<InventoryItem>;
+    const response = await apiClient.post<{ item: any }, CreateInventoryItemInput>(
+        "/catalog/items",
+        {
+            companyId: data.companyId,
+            code: data.code,
+            name: data.name,
+            unit: data.unit || null,
+            stock: data.stock || 0,
+            costInitList: data.costInitList,
+            costPrice: data.costPrice,
+            sellPrice: data.sellPrice,
+            techPrice: data.techPrice,
+            marginPercent: data.marginPercent || 0,
+            isActive: true,
+        },
+        { idempotencyKey }
+    );
+
+    if (!response.success) {
+        throw new Error(response.error?.message || "Error al crear ítem de inventario");
+    }
+
+    const i = response.data.item;
+    return {
+        id: i.id,
+        companyId: i.companyId,
+        code: i.code,
+        name: i.name,
+        unit: i.unit || null,
+        stock: i.stock,
+        costInitList: i.costInitList,
+        costPrice: i.costPrice,
+        sellPrice: i.sellPrice,
+        techPrice: i.techPrice,
+        marginPercent: i.marginPercent,
+        isActive: i.isActive,
+        createdAt: new Date(i.createdAt),
+        updatedAt: new Date(i.updatedAt),
+    } as unknown as InventoryItem;
 }
 
 export async function updateInventoryItem(
     id: string,
     data: UpdateInventoryItemInput,
     session: SessionUser,
+    idempotencyKey?: string
 ): Promise<InventoryItem> {
     if (session.role !== "ADMIN")
         throw new Error(
             "Solo un Administrador puede modificar ítems de inventario",
         );
 
-    const existing = await db.orm.public.InventoryItem.first({ id });
-    if (!existing) throw new Error("Ítem de inventario no encontrado");
+    const response = await apiClient.patch<{ item: any }, UpdateInventoryItemInput>(
+        `/catalog/items/${id}`,
+        {
+            name: data.name,
+            code: data.code,
+            unit: data.unit,
+            stock: data.stock,
+            costInitList: data.costInitList,
+            costPrice: data.costPrice,
+            sellPrice: data.sellPrice,
+            techPrice: data.techPrice,
+            marginPercent: data.marginPercent,
+            isActive: data.isActive,
+        },
+        { idempotencyKey }
+    );
 
-    const updateData: any = {};
-    if (data.name) updateData.name = data.name;
-    if (data.code) updateData.code = data.code;
-    if (data.unit !== undefined) updateData.unit = data.unit;
-    if (data.stock !== undefined) updateData.stock = data.stock;
-    if (data.costInitList !== undefined) updateData.costInitList = data.costInitList.toString();
-    if (data.costPrice !== undefined) updateData.costPrice = data.costPrice.toString();
-    if (data.sellPrice !== undefined) updateData.sellPrice = data.sellPrice.toString();
-    if (data.techPrice !== undefined) updateData.techPrice = data.techPrice.toString();
-    if (data.marginPercent !== undefined) updateData.marginPercent = data.marginPercent.toString();
-    if (data.isActive !== undefined) updateData.isActive = data.isActive;
+    if (!response.success) {
+        throw new Error(response.error?.message || "Error al actualizar ítem de inventario");
+    }
 
-    await db.orm.public.InventoryItem.where({ id }).update(updateData);
-
-    return db.orm.public.InventoryItem
-        .include("company", (c: any) => c)
-        .first({ id }) as unknown as Promise<InventoryItem>;
+    const i = response.data.item;
+    return {
+        id: i.id,
+        companyId: i.companyId,
+        code: i.code,
+        name: i.name,
+        unit: i.unit || null,
+        stock: i.stock,
+        costInitList: i.costInitList,
+        costPrice: i.costPrice,
+        sellPrice: i.sellPrice,
+        techPrice: i.techPrice,
+        marginPercent: i.marginPercent,
+        isActive: i.isActive,
+        createdAt: new Date(i.createdAt),
+        updatedAt: new Date(i.updatedAt),
+    } as unknown as InventoryItem;
 }
 
 /**
@@ -120,14 +188,20 @@ export async function updateInventoryItem(
 export async function deactivateInventoryItem(
     id: string,
     session: SessionUser,
+    idempotencyKey?: string
 ): Promise<void> {
     if (session.role !== "ADMIN")
         throw new Error(
             "Solo un Administrador puede desactivar ítems de inventario",
         );
 
-    const existing = await db.orm.public.InventoryItem.first({ id });
-    if (!existing) throw new Error("Ítem de inventario no encontrado");
+    const response = await apiClient.patch<{ item: any }>(
+        `/catalog/items/${id}`,
+        { isActive: false },
+        { idempotencyKey }
+    );
 
-    await db.orm.public.InventoryItem.where({ id }).update({ isActive: false });
+    if (!response.success) {
+        throw new Error(response.error?.message || "Error al desactivar ítem de inventario");
+    }
 }

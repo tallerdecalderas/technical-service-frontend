@@ -20,7 +20,8 @@
       }
     ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "temporal-polyfill/full/global": ["./lib/temporal-shim.ts"]
     }
   },
   "include": [

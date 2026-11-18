@@ -1,9 +1,17 @@
-import type { FieldOutputTypes } from "@/generated/prisma8/contract";
 import type { Service } from "./service";
 
 // ─── Tipos base ───────────────────────────────────────────────────────────────
 
-export type EstimateRow = FieldOutputTypes["public"]["Estimate"];
+export type EstimateRow = {
+  id: string;
+  serviceId: string;
+  status: string;
+  totalAmount: number;
+  validUntil: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 

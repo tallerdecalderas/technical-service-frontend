@@ -1,11 +1,16 @@
-import type { FieldOutputTypes } from "@/generated/prisma8/contract";
 import type { Settlement } from "./settlement";
 import type { Service } from "./service";
 import type { Company } from "./company";
 
 // ─── Tipos base ───────────────────────────────────────────────────────────────
 
-export type SettlementPartRow = FieldOutputTypes["public"]["SettlementPart"];
+export type SettlementPartRow = {
+  id: string;
+  settlementId: string;
+  serviceId: string;
+  companyId: string;
+  createdAt: string;
+};
 
 // ─── Tipo con relaciones ──────────────────────────────────────────────────────
 

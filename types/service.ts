@@ -1,4 +1,3 @@
-import type { FieldOutputTypes } from "@/generated/prisma8/contract";
 import type { Company } from "./company";
 import type { Client } from "./client";
 import type { ServiceCategory } from "./service-category";
@@ -12,7 +11,24 @@ import type { ActivityLog } from "./activity-log";
 
 // ─── Tipos base ───────────────────────────────────────────────────────────────
 
-export type ServiceRow = FieldOutputTypes["public"]["Service"];
+export type ServiceRow = {
+  id: string;
+  companyId: string;
+  clientId: string;
+  categoryId: string | null;
+  technicianId: string | null;
+  scheduledDate: string;
+  address: string;
+  locality: string;
+  observation: string | null;
+  expectedAmount: number | null;
+  finalAmount: number | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: string | null;
+  closedBy: string | null;
+};
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 

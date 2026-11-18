@@ -1,9 +1,13 @@
-import type { FieldOutputTypes } from "@/generated/prisma8/contract";
 import type { Service } from "./service";
 
 // ─── Tipos base ───────────────────────────────────────────────────────────────
 
-export type ServiceCategoryRow = FieldOutputTypes["public"]["ServiceCategory"];
+export type ServiceCategoryRow = {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 // ─── Tipo con relaciones ──────────────────────────────────────────────────────
 

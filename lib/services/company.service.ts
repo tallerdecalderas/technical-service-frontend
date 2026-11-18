@@ -1,11 +1,13 @@
 /**
- * Company Service — taller de calderas
- * Documentación: .docs/reglas-negocio.md
+ * Company Service (Empresas) — taller de calderas
+ * Ahora consume la API Go en lugar de Prisma.
+ * Documentación: docs/reglas-negocio.md, docs/api.md
  *
  * Empresas para las cuales los técnicos prestan servicio.
  * Cada empresa posee su propio inventario de repuestos.
  */
-import { db } from "@/lib/prisma";
+
+import { apiClient } from "@/lib/api-client";
 import type { Company, SessionUser } from "@/types";
 import type { z } from "zod";
 import type {
@@ -16,60 +18,136 @@ import type {
 export type CreateCompanyInput = z.infer<typeof createCompanySchema>;
 export type UpdateCompanyInput = z.infer<typeof updateCompanySchema>;
 
-export async function listCompanies(): Promise<Company[]> {
-    return db.orm.public.Company
-        .orderBy(c => c.name.asc())
-        .all() as unknown as Promise<Company[]>;
+export async function listCompanies(session?: SessionUser): Promise<Company[]> {
+    const response = await apiClient.get<{ companies: any[] }>("/companies");
+
+    if (!response.success) {
+        throw new Error(response.error?.message || "Error al listar empresas");
+    }
+
+    return (response.data?.companies || []).map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        logo: c.logo || null,
+        costMarkupPercent: c.costMarkupPercent,
+        defaultMarginPercent: c.defaultMarginPercent,
+        isActive: c.isActive,
+        createdAt: new Date(c.createdAt),
+        updatedAt: new Date(c.updatedAt),
+    }) as unknown as Company);
 }
 
-export async function listActiveCompanies(): Promise<Company[]> {
-    return db.orm.public.Company
-        .where({ isActive: true })
-        .orderBy(c => c.name.asc())
-        .all() as unknown as Promise<Company[]>;
+export async function listActiveCompanies(session?: SessionUser): Promise<Company[]> {
+    const response = await apiClient.get<{ companies: any[] }>("/companies?isActive=true");
+
+    if (!response.success) {
+        throw new Error(response.error?.message || "Error al listar empresas activas");
+    }
+
+    return (response.data?.companies || []).map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        logo: c.logo || null,
+        costMarkupPercent: c.costMarkupPercent,
+        defaultMarginPercent: c.defaultMarginPercent,
+        isActive: c.isActive,
+        createdAt: new Date(c.createdAt),
+        updatedAt: new Date(c.updatedAt),
+    }) as unknown as Company);
 }
 
-export async function getCompanyById(id: string): Promise<Company | null> {
-    return db.orm.public.Company.first({ id }) as unknown as Promise<Company | null>;
+export async function getCompanyById(id: string, session?: SessionUser): Promise<Company | null> {
+    const response = await apiClient.get<{ company: any }>(`/companies/${id}`);
+
+    if (!response.success) {
+        if (response.error?.code === "NOT_FOUND") return null;
+        throw new Error(response.error?.message || "Error al obtener empresa");
+    }
+
+    const c = response.data.company;
+    return {
+        id: c.id,
+        name: c.name,
+        logo: c.logo || null,
+        costMarkupPercent: c.costMarkupPercent,
+        defaultMarginPercent: c.defaultMarginPercent,
+        isActive: c.isActive,
+        createdAt: new Date(c.createdAt),
+        updatedAt: new Date(c.updatedAt),
+    } as unknown as Company;
 }
 
 export async function createCompany(
     data: CreateCompanyInput,
     session: SessionUser,
+    idempotencyKey?: string
 ): Promise<Company> {
     if (session.role !== "ADMIN")
         throw new Error("Solo un Administrador puede crear empresas");
 
-    return db.orm.public.Company.create({
-        name: data.name,
-        logo: data.logo ?? null,
-        costMarkupPercent: data.costMarkupPercent?.toString() ?? "0",
-        defaultMarginPercent: data.defaultMarginPercent?.toString() ?? "0",
-        isActive: true,
-    }) as unknown as Promise<Company>;
+    const response = await apiClient.post<{ company: any }, CreateCompanyInput>(
+        "/companies",
+        {
+            name: data.name,
+            logo: data.logo || null,
+            costMarkupPercent: data.costMarkupPercent || 0,
+            defaultMarginPercent: data.defaultMarginPercent || 0,
+            isActive: true,
+        },
+        { idempotencyKey }
+    );
+
+    if (!response.success) {
+        throw new Error(response.error?.message || "Error al crear empresa");
+    }
+
+    const c = response.data.company;
+    return {
+        id: c.id,
+        name: c.name,
+        logo: c.logo || null,
+        costMarkupPercent: c.costMarkupPercent,
+        defaultMarginPercent: c.defaultMarginPercent,
+        isActive: c.isActive,
+        createdAt: new Date(c.createdAt),
+        updatedAt: new Date(c.updatedAt),
+    } as unknown as Company;
 }
 
 export async function updateCompany(
     id: string,
     data: UpdateCompanyInput,
     session: SessionUser,
+    idempotencyKey?: string
 ): Promise<Company> {
     if (session.role !== "ADMIN")
         throw new Error("Solo un Administrador puede modificar empresas");
 
-    const existing = await db.orm.public.Company.first({ id });
-    if (!existing) throw new Error("Empresa no encontrada");
+    const response = await apiClient.patch<{ company: any }, UpdateCompanyInput>(
+        `/companies/${id}`,
+        {
+            name: data.name,
+            logo: data.logo,
+            costMarkupPercent: data.costMarkupPercent,
+            defaultMarginPercent: data.defaultMarginPercent,
+            isActive: data.isActive,
+        },
+        { idempotencyKey }
+    );
 
-    const updateData: any = {};
-    if (data.name) updateData.name = data.name;
-    if (data.logo !== undefined) updateData.logo = data.logo;
-    if (data.costMarkupPercent !== undefined) updateData.costMarkupPercent = data.costMarkupPercent.toString();
-    if (data.defaultMarginPercent !== undefined) updateData.defaultMarginPercent = data.defaultMarginPercent.toString();
-    if (data.isActive !== undefined) updateData.isActive = data.isActive;
+    if (!response.success) {
+        throw new Error(response.error?.message || "Error al actualizar empresa");
+    }
 
-    const updated = await db.orm.public.Company
-        .where({ id })
-        .update(updateData);
-        
-    return updated as unknown as Company;
+    const c = response.data.company;
+    return {
+        id: c.id,
+        name: c.name,
+        logo: c.logo || null,
+        costMarkupPercent: c.costMarkupPercent,
+        defaultMarginPercent: c.defaultMarginPercent,
+        isActive: c.isActive,
+        createdAt: new Date(c.createdAt),
+        updatedAt: new Date(c.updatedAt),
+    } as unknown as Company;
 }

@@ -1,74 +1,136 @@
 /**
- * Client Service — taller de calderas
+ * Client Service (Clientes) — taller de calderas
+ * Ahora consume la API Go en lugar de Prisma.
  * Documentación: docs/reglas-negocio.md, docs/api.md
  */
-import { db } from "@/lib/prisma";
-import type { Client } from "@/types";
-import type { z } from "zod";
-import type { createClientSchema, updateClientSchema } from "@/lib/validations";
 
-export type CreateClientInput = z.infer<typeof createClientSchema>;
-export type UpdateClientInput = z.infer<typeof updateClientSchema>;
+import { apiClient } from "@/lib/api-client";
+import {
+  adaptClient,
+  adaptClientDetail,
+  adaptClientList,
+} from "@/lib/adapters/client.adapter";
+import type { Client, SessionUser } from "@/types";
+import type {
+  createClientSchema,
+  updateClientSchema,
+} from "@/lib/validations";
 
-export async function listClients(): Promise<Client[]> {
-  return db.orm.public.Client
-    .orderBy(c => c.name.asc())
-    .all() as unknown as Promise<Client[]>;
+export type CreateClientInput = Parameters<typeof createClientSchema.parse>[0];
+export type UpdateClientInput = Parameters<typeof updateClientSchema.parse>[0];
+
+/** Lista paginada de clientes. ADMIN ve todos; TECHNICIAN ve clientes con servicios propios. */
+export async function listClients(
+  params?: {
+    page?: number;
+    pageSize?: number;
+    search?: string;
+  },
+  session?: SessionUser
+): Promise<{ clients: Client[]; page: number; pageSize: number; total: number; totalPages: number }> {
+  const response = await apiClient.get<{
+    clients: any[];
+    meta: { page: number; pageSize: number; total: number; totalPages: number };
+  }>("/clients", {
+    page: params?.page ?? 1,
+    pageSize: params?.pageSize ?? 20,
+    search: params?.search ?? "",
+  });
+
+  if (!response.success) {
+    throw new Error(response.error?.message || "Error al listar clientes");
+  }
+
+  const adapted = adaptClientList(response as any);
+  return {
+    clients: adapted.clients,
+    page: adapted.meta.page,
+    pageSize: adapted.meta.pageSize,
+    total: adapted.meta.total,
+    totalPages: adapted.meta.totalPages,
+  };
 }
 
-export async function getClientById(id: string): Promise<Client | null> {
-  return db.orm.public.Client
-    .include("services", s => s.select("id", "status", "scheduledDate").orderBy(x => x.scheduledDate.desc()).limit(5))
-    .first({ id }) as unknown as Promise<Client | null>;
+/** Obtiene un cliente por ID con sus servicios recientes. */
+export async function getClientById(
+  id: string,
+  session?: SessionUser
+): Promise<Client | null> {
+  const response = await apiClient.get<{ client: any }>(`/clients/${id}`);
+
+  if (!response.success) {
+    if (response.error?.code === "NOT_FOUND") return null;
+    throw new Error(response.error?.message || "Error al obtener cliente");
+  }
+
+  return adaptClientDetail(response as any);
 }
 
-export async function createClient(data: CreateClientInput): Promise<Client> {
-  return db.orm.public.Client.create({
-    name: data.name,
-    email: data.email || null,
-    phone: data.phone,
-    address: data.address,
-    locality: data.locality,
-  }) as unknown as Promise<Client>;
+/** Crea un nuevo cliente. */
+export async function createClient(
+  data: CreateClientInput,
+  session?: SessionUser,
+  idempotencyKey?: string
+): Promise<Client> {
+  const response = await apiClient.post<{ client: any }, CreateClientInput>(
+    "/clients",
+    {
+      name: data.name,
+      email: data.email || null,
+      phone: data.phone,
+      address: data.address || null,
+      locality: data.locality || null,
+    },
+    { idempotencyKey }
+  );
+
+  if (!response.success) {
+    throw new Error(response.error?.message || "Error al crear cliente");
+  }
+
+  return adaptClient(response.data.client);
 }
 
+/** Actualiza un cliente existente. */
 export async function updateClient(
   id: string,
   data: UpdateClientInput,
+  session?: SessionUser,
+  idempotencyKey?: string
 ): Promise<Client> {
-  const existing = await db.orm.public.Client.first({ id });
-  if (!existing) throw new Error("Cliente no encontrado");
+  const response = await apiClient.patch<{ client: any }, UpdateClientInput>(
+    `/clients/${id}`,
+    {
+      name: data.name,
+      email: data.email !== undefined ? data.email || null : undefined,
+      phone: data.phone !== undefined ? data.phone : undefined,
+      address: data.address !== undefined ? data.address || null : undefined,
+      locality: data.locality !== undefined ? data.locality || null : undefined,
+    },
+    { idempotencyKey }
+  );
 
-  const updateData: any = {};
-  if (data.name) updateData.name = data.name;
-  if (data.email !== undefined) updateData.email = data.email || null;
-  if (data.phone !== undefined) updateData.phone = data.phone;
-  if (data.address !== undefined) updateData.address = data.address;
-  if (data.locality !== undefined) updateData.locality = data.locality;
+  if (!response.success) {
+    throw new Error(response.error?.message || "Error al actualizar cliente");
+  }
 
-  const updated = await db.orm.public.Client
-    .where({ id })
-    .update(updateData);
-
-  return updated as unknown as Client;
+  return adaptClient(response.data.client);
 }
 
 /**
  * Elimina un cliente solamente si no tiene servicios asociados.
  * Los clientes con historial no pueden eliminarse (docs/reglas-negocio.md).
  */
-export async function removeClient(id: string): Promise<void> {
-  const existing = await db.orm.public.Client
-    .include("services", s => s.count())
-    .first({ id });
+export async function removeClient(
+  id: string,
+  session?: SessionUser,
+  idempotencyKey?: string
+): Promise<void> {
+  const response = await apiClient.delete(`/clients/${id}`, {
+    idempotencyKey,
+  });
 
-  if (!existing) throw new Error("Cliente no encontrado");
-
-  if (existing.services > 0) {
-    throw new Error(
-      "No se puede eliminar el cliente porque tiene servicios asociados. El historial debe preservarse.",
-    );
+  if (!response.success) {
+    throw new Error(response.error?.message || "Error al eliminar cliente");
   }
-
-  await db.orm.public.Client.where({ id }).delete();
 }

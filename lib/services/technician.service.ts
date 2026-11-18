@@ -1,117 +1,127 @@
 /**
- * Technician Service — taller de calderas
+ * Technician Service (Técnicos) — taller de calderas
+ * Ahora consume la API Go en lugar de Prisma.
  * Documentación: docs/tecnicos.md, docs/decisiones.md (DEC-012)
  * El Técnico nunca administra información de otros técnicos.
+ * La creación de técnicos se hace a través de Supabase Auth (gestión por el backend Go).
  */
-import { db } from "@/lib/prisma";
-import { hash } from "bcrypt";
-import type { User } from "@/types";
-import type { z } from "zod";
+
+import { apiClient } from "@/lib/api-client";
+import {
+  adaptTechnician,
+  adaptTechnicianDetail,
+  adaptTechnicianList,
+} from "@/lib/adapters/technician.adapter";
+import type { User, SessionUser } from "@/types";
 import type {
   createTechnicianSchema,
   updateTechnicianSchema,
 } from "@/lib/validations";
 
-export type CreateTechnicianInput = z.infer<typeof createTechnicianSchema>;
-export type UpdateTechnicianInput = z.infer<typeof updateTechnicianSchema>;
+export type CreateTechnicianInput = Parameters<
+  typeof createTechnicianSchema.parse
+>[0];
+export type UpdateTechnicianInput = Parameters<
+  typeof updateTechnicianSchema.parse
+>[0];
 
-const SELECT_FIELDS = [
-  "id",
-  "name",
-  "email",
-  "phone",
-  "role",
-  "isActive",
-  "avatar",
-  "createdAt",
-  "updatedAt",
-] as const;
+export async function listTechnicians(): Promise<User[]> {
+  const response = await apiClient.get<{
+    technicians: any[];
+    meta: { page: number; pageSize: number; total: number; totalPages: number };
+  }>("/technicians");
 
-export async function listTechnicians(): Promise<Omit<User, "passwordHash">[]> {
-  return db.orm.public.User
-    .where({ role: "TECHNICIAN" })
-    .select(...SELECT_FIELDS)
-    .orderBy(u => u.name.asc())
-    .all() as unknown as Promise<Omit<User, "passwordHash">[]>;
+  if (!response.success) {
+    throw new Error(response.error?.message || "Error al listar técnicos");
+  }
+
+  const adapted = adaptTechnicianList(response as any);
+  return adapted.technicians;
 }
 
-export async function listUsers(): Promise<Omit<User, "passwordHash">[]> {
-  return db.orm.public.User
-    .select(...SELECT_FIELDS)
-    .orderBy(u => u.name.asc())
-    .all() as unknown as Promise<Omit<User, "passwordHash">[]>;
+export async function listUsers(): Promise<User[]> {
+  const response = await apiClient.get<{
+    technicians: any[];
+    meta: { page: number; pageSize: number; total: number; totalPages: number };
+  }>("/technicians");
+
+  if (!response.success) {
+    throw new Error(response.error?.message || "Error al listar usuarios");
+  }
+
+  const adapted = adaptTechnicianList(response as any);
+  return adapted.technicians;
 }
 
 export async function getTechnicianById(
   id: string,
-): Promise<Omit<User, "passwordHash"> | null> {
-  return db.orm.public.User
-    .select(...SELECT_FIELDS)
-    .first({ id }) as unknown as Promise<Omit<User, "passwordHash"> | null>;
+): Promise<User | null> {
+  const response = await apiClient.get<{ technician: any }>(
+    `/technicians/${id}`
+  );
+
+  if (!response.success) {
+    if (response.error?.code === "NOT_FOUND") return null;
+    throw new Error(response.error?.message || "Error al obtener técnico");
+  }
+
+  return adaptTechnicianDetail(response as any);
 }
 
+/** Crea un nuevo técnico (a través de Supabase Auth + backend Go). */
 export async function createTechnician(
   data: CreateTechnicianInput,
-): Promise<Omit<User, "passwordHash">> {
-  const existing = await db.orm.public.User.where({ email: data.email }).first();
-  if (existing) throw new Error("El email ya está registrado");
+  idempotencyKey?: string
+): Promise<User> {
+  const response = await apiClient.post<{ technician: any }, CreateTechnicianInput>(
+    "/technicians",
+    {
+      name: data.name,
+      email: data.email,
+      phone: data.phone || null,
+      dni: data.dni || null,
+    },
+    { idempotencyKey }
+  );
 
-  const passwordHash = await hash(data.password, 10);
+  if (!response.success) {
+    throw new Error(response.error?.message || "Error al crear técnico");
+  }
 
-  const created = await db.orm.public.User.create({
-    name: data.name,
-    email: data.email,
-    passwordHash,
-    phone: data.phone,
-    role: "TECHNICIAN",
-    isActive: true,
-  });
-
-  return db.orm.public.User
-    .select(...SELECT_FIELDS)
-    .first({ id: created.id }) as unknown as Promise<Omit<User, "passwordHash">>;
+  return adaptTechnician(response.data.technician);
 }
 
 export async function updateTechnician(
   id: string,
   data: UpdateTechnicianInput,
-): Promise<Omit<User, "passwordHash">> {
-  const existing = await db.orm.public.User.first({ id });
-  if (!existing) throw new Error("Técnico no encontrado");
+  idempotencyKey?: string
+): Promise<User> {
+  const response = await apiClient.patch<{ technician: any }, UpdateTechnicianInput>(
+    `/technicians/${id}`,
+    {
+      name: data.name,
+      email: data.email,
+      phone: data.phone !== undefined ? data.phone || null : undefined,
+      dni: data.dni !== undefined ? data.dni || null : undefined,
+      isActive: data.isActive,
+    },
+    { idempotencyKey }
+  );
 
-  const updateData: Record<string, unknown> = {};
-  if (data.name) updateData.name = data.name;
-  if (data.email) updateData.email = data.email;
-  if (data.phone !== undefined) updateData.phone = data.phone;
-  if (data.isActive !== undefined) updateData.isActive = data.isActive;
-  if (data.password) updateData.passwordHash = await hash(data.password, 10);
+  if (!response.success) {
+    throw new Error(response.error?.message || "Error al actualizar técnico");
+  }
 
-  await db.orm.public.User.where({ id }).update(updateData as any);
-
-  return db.orm.public.User
-    .select(...SELECT_FIELDS)
-    .first({ id }) as unknown as Promise<Omit<User, "passwordHash">>;
+  return adaptTechnician(response.data.technician);
 }
 
 /**
  * Realiza soft delete si el técnico tiene historial, hard delete si no.
  */
 export async function removeTechnician(id: string): Promise<void> {
-  const existing = await db.orm.public.User.first({ id });
-  if (!existing) throw new Error("Técnico no encontrado");
+  const response = await apiClient.delete(`/technicians/${id}`);
 
-  // NOTE: If Payment doesn't have technicianId, we will adjust this later when compiling
-  const [servicesAgg, paymentsAgg] = await Promise.all([
-    db.orm.public.Service.where({ technicianId: id }).aggregate(a => ({ c: a.count() })),
-    db.orm.public.Payment.where({ technicianId: id }).aggregate(a => ({ c: a.count() })),
-  ]);
-
-  const servicesCount = servicesAgg.c;
-  const paymentsCount = paymentsAgg.c;
-
-  if (servicesCount > 0 || paymentsCount > 0) {
-    await db.orm.public.User.where({ id }).update({ isActive: false });
-  } else {
-    await db.orm.public.User.where({ id }).delete();
+  if (!response.success) {
+    throw new Error(response.error?.message || "Error al eliminar técnico");
   }
 }

@@ -1,4 +1,3 @@
-import type { FieldOutputTypes } from "@/generated/prisma8/contract";
 import type { User } from "./user";
 import type { Company } from "./company";
 import type { Payment } from "./payment";
@@ -7,7 +6,15 @@ import type { SettlementPart } from "./settlement-part";
 
 // ─── Tipos base ───────────────────────────────────────────────────────────────
 
-export type SettlementRow = FieldOutputTypes["public"]["Settlement"];
+export type SettlementRow = {
+  id: string;
+  technicianId: string;
+  liquidatedBy: string | null;
+  companyId: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
