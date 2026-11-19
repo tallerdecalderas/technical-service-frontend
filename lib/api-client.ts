@@ -173,6 +173,7 @@ class ApiClient {
     try {
       const response = await fetch(url, {
         ...init,
+        credentials: "include",
         signal: controller.signal,
       });
 
