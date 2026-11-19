@@ -16,6 +16,12 @@ const SESSION_COOKIE_NAME =
   process.env.SESSION_COOKIE_NAME ?? "tech-service-session";
 const CSRF_COOKIE_NAME = process.env.CSRF_COOKIE_NAME ?? "tech-service-csrf";
 
+/** Timeout por defecto para peticiones estándar JSON (15 segundos) */
+export const DEFAULT_TIMEOUT_MS = 15_000;
+
+/** Timeout extendido para subidas de archivos o FormData (60 segundos) */
+export const UPLOAD_TIMEOUT_MS = 60_000;
+
 /* ─── Tipos de transporte ───────────────────────────────────────────────── */
 
 export interface ApiError {
@@ -40,6 +46,13 @@ export interface PaginationMeta {
 
 export interface PaginatedResponse<T> extends ApiResponse<T[]> {
   meta?: PaginationMeta;
+}
+
+export interface RequestOptions {
+  timeoutMs?: number;
+  signal?: AbortSignal;
+  cookies?: string;
+  idempotencyKey?: string;
 }
 
 /* ─── Cliente HTTP ───────────────────────────────────────────────────────── */
@@ -130,27 +143,133 @@ class ApiClient {
     } as ApiResponse<T>;
   }
 
+  /**
+   * Ejecuta una petición fetch con control de timeout y manejo seguro de errores de red.
+   */
+  private async executeFetch<T>(
+    url: string,
+    init: RequestInit,
+    timeoutMs: number = DEFAULT_TIMEOUT_MS,
+    externalSignal?: AbortSignal
+  ): Promise<ApiResponse<T>> {
+    const controller = new AbortController();
+    let isTimedOut = false;
+
+    const timer = setTimeout(() => {
+      isTimedOut = true;
+      controller.abort();
+    }, timeoutMs);
+
+    if (externalSignal) {
+      if (externalSignal.aborted) {
+        controller.abort();
+      } else {
+        externalSignal.addEventListener("abort", () => controller.abort(), {
+          once: true,
+        });
+      }
+    }
+
+    try {
+      const response = await fetch(url, {
+        ...init,
+        signal: controller.signal,
+      });
+
+      return await this.handleResponse<T>(response);
+    } catch (err: any) {
+      if (isTimedOut || err?.name === "TimeoutError") {
+        return {
+          success: false,
+          error: {
+            code: "TIMEOUT",
+            message: `La solicitud tardó más de ${Math.round(
+              timeoutMs / 1000
+            )}s y fue cancelada. Comprueba tu conexión a internet.`,
+          },
+        };
+      }
+
+      if (err?.name === "AbortError") {
+        return {
+          success: false,
+          error: {
+            code: "ABORTED",
+            message: "La solicitud fue cancelada.",
+          },
+        };
+      }
+
+      return {
+        success: false,
+        error: {
+          code: "NETWORK_ERROR",
+          message:
+            err?.message ||
+            "Error de conexión: no se pudo comunicar con el servidor.",
+        },
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   /* ─── GET ─────────────────────────────────────────────────────────────── */
 
   async get<T>(
     path: string,
-    params?: Record<string, string | number | boolean>,
-    cookies?: string
+    paramsOrCookies?: Record<string, string | number | boolean | undefined | null> | string,
+    cookiesOrOptions?: string | RequestOptions,
+    options?: RequestOptions
   ): Promise<ApiResponse<T>> {
-    const url = new URL(`${this.base}${path}`);
-    if (params) {
-      for (const [key, value] of Object.entries(params)) {
-        url.searchParams.append(key, String(value));
+    let params: Record<string, string | number | boolean | undefined | null> | undefined;
+    let cookies: string | undefined;
+    let timeoutMs: number | undefined;
+    let signal: AbortSignal | undefined;
+
+    if (typeof paramsOrCookies === "string") {
+      cookies = paramsOrCookies;
+      if (typeof cookiesOrOptions === "object" && cookiesOrOptions !== null) {
+        timeoutMs = cookiesOrOptions.timeoutMs;
+        signal = cookiesOrOptions.signal;
+      }
+      if (options) {
+        timeoutMs = options.timeoutMs ?? timeoutMs;
+        signal = options.signal ?? signal;
+      }
+    } else {
+      params = paramsOrCookies;
+      if (typeof cookiesOrOptions === "string") {
+        cookies = cookiesOrOptions;
+      } else if (typeof cookiesOrOptions === "object" && cookiesOrOptions !== null) {
+        timeoutMs = cookiesOrOptions.timeoutMs;
+        signal = cookiesOrOptions.signal;
+      }
+      if (options) {
+        timeoutMs = options.timeoutMs ?? timeoutMs;
+        signal = options.signal ?? signal;
       }
     }
 
-    const response = await fetch(url.toString(), {
-      method: "GET",
-      headers: this.headers({}, cookies),
-      cache: "no-store",
-    });
+    const url = new URL(`${this.base}${path}`);
+    if (params) {
+      for (const [key, value] of Object.entries(params)) {
+        if (value !== undefined && value !== null) {
+          url.searchParams.append(key, String(value));
+        }
+      }
+    }
 
-    return this.handleResponse<T>(response);
+    return this.executeFetch<T>(
+      url.toString(),
+      {
+        method: "GET",
+        headers: this.headers({}, cookies),
+        cache: "no-store",
+      },
+      timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      signal
+    );
   }
 
   /* ─── POST ────────────────────────────────────────────────────────────── */
@@ -158,30 +277,34 @@ class ApiClient {
   async post<T, Body = unknown>(
     path: string,
     body?: Body,
-    options: {
-      idempotencyKey?: string;
-      cookies?: string;
-    } = {}
+    options: RequestOptions = {}
   ): Promise<ApiResponse<T>> {
     const isFormData =
       typeof FormData !== "undefined" && body instanceof FormData;
-    const response = await fetch(`${this.base}${path}`, {
-      method: "POST",
-      headers: this.headers(
-        {
-          body: isFormData
-            ? (body as Body)
-            : body
-            ? JSON.stringify(body)
-            : undefined,
-        },
-        options.cookies,
-        options.idempotencyKey,
-        isFormData ? undefined : "application/json"
-      ),
-    });
+    const effectiveTimeout =
+      options.timeoutMs ?? (isFormData ? UPLOAD_TIMEOUT_MS : DEFAULT_TIMEOUT_MS);
 
-    return this.handleResponse<T>(response);
+    const payload: BodyInit | undefined = isFormData
+      ? (body as FormData)
+      : body !== undefined
+      ? JSON.stringify(body)
+      : undefined;
+
+    return this.executeFetch<T>(
+      `${this.base}${path}`,
+      {
+        method: "POST",
+        headers: this.headers(
+          {},
+          options.cookies,
+          options.idempotencyKey,
+          isFormData ? undefined : "application/json"
+        ),
+        body: payload,
+      },
+      effectiveTimeout,
+      options.signal
+    );
   }
 
   /* ─── PATCH ───────────────────────────────────────────────────────────── */
@@ -189,38 +312,48 @@ class ApiClient {
   async patch<T, Body = unknown>(
     path: string,
     body?: Body,
-    options: {
-      idempotencyKey?: string;
-      cookies?: string;
-    } = {}
+    options: RequestOptions = {}
   ): Promise<ApiResponse<T>> {
-    const response = await fetch(`${this.base}${path}`, {
-      method: "PATCH",
-      headers: this.headers(
-        { body: body ? JSON.stringify(body) : undefined },
-        options.cookies,
-        options.idempotencyKey
-      ),
-    });
+    const isFormData =
+      typeof FormData !== "undefined" && body instanceof FormData;
+    const payload: BodyInit | undefined = isFormData
+      ? (body as FormData)
+      : body !== undefined
+      ? JSON.stringify(body)
+      : undefined;
 
-    return this.handleResponse<T>(response);
+    return this.executeFetch<T>(
+      `${this.base}${path}`,
+      {
+        method: "PATCH",
+        headers: this.headers(
+          {},
+          options.cookies,
+          options.idempotencyKey,
+          isFormData ? undefined : "application/json"
+        ),
+        body: payload,
+      },
+      options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      options.signal
+    );
   }
 
   /* ─── DELETE ──────────────────────────────────────────────────────────── */
 
-  async delete(
+  async delete<T = void>(
     path: string,
-    options: {
-      idempotencyKey?: string;
-      cookies?: string;
-    } = {}
-  ): Promise<ApiResponse<void>> {
-    const response = await fetch(`${this.base}${path}`, {
-      method: "DELETE",
-      headers: this.headers({}, options.cookies, options.idempotencyKey),
-    });
-
-    return this.handleResponse<void>(response);
+    options: RequestOptions = {}
+  ): Promise<ApiResponse<T>> {
+    return this.executeFetch<T>(
+      `${this.base}${path}`,
+      {
+        method: "DELETE",
+        headers: this.headers({}, options.cookies, options.idempotencyKey),
+      },
+      options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+      options.signal
+    );
   }
 }
 

@@ -23,7 +23,8 @@ export async function listServiceParts(
     serviceId: string,    cookies?: string,): Promise<ServicePart[]> {
     const response = await apiClient.get<{ parts: any[] }>(
         `/services/${serviceId}/parts`,
-        cookies,
+        cookies
+    );
 
     if (!response.success) {
         throw new Error(response.error?.message || "Error al listar repuestos");
