@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, AlertCircle } from "lucide-react";
+import { apiClient } from "@/lib/api-client";
 
 export function LoginForm() {
   const router = useRouter();
@@ -31,20 +32,18 @@ export function LoginForm() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+      const response = await apiClient.post<{ user: any; role: string }, { email: string; password: string }>("/auth/login", {
+        email,
+        password,
       });
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || "Error al iniciar sesión");
+      if (!response.success) {
+        setError(response.error?.message || "Error al iniciar sesión");
         return;
       }
 
-      if (data.data.role === "ADMIN") {
+      const data = response.data;
+      if (data.role === "ADMIN") {
         router.push("/admin/dashboard");
       } else {
         router.push("/technician/dashboard");

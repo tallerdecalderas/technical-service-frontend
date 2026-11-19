@@ -1,6 +1,7 @@
-import { db } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { redirect, notFound } from "next/navigation";
+import { getServerCookies } from "@/lib/api-client-server";
+import { getTechnicianById } from "@/lib/services/technician.service";
 import { TechnicianForm } from "@/components/technicians/technician-form";
 
 interface EditTechnicianPageProps {
@@ -16,8 +17,9 @@ export default async function EditTechnicianPage({
   }
 
   const { id } = await params;
+  const cookies = await getServerCookies();
 
-  const technician = await db.orm.public.User.first({ id });
+  const technician = await getTechnicianById(id, cookies);
 
   if (!technician || technician.role !== "TECHNICIAN") {
     notFound();

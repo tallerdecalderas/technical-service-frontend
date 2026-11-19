@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { MessageCircle, Copy, ExternalLink } from "lucide-react";
+import { apiClient } from "@/lib/api-client";
 import {
   generateWhatsAppMessage,
   buildWhatsAppUrl,
@@ -70,11 +71,10 @@ export function WhatsAppActions({
 
   async function logAction(action: "COPIED" | "OPENED") {
     try {
-      await fetch("/api/integrations/whatsapp/log", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ serviceId, action }),
-      });
+      await apiClient.post<{ success: boolean }, { serviceId: string; action: string }>(
+        "/integrations/whatsapp/log",
+        { serviceId, action },
+      );
     } catch {
       // El logging no debe bloquear la UX
     }

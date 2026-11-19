@@ -1,29 +1,26 @@
 import { notFound } from "next/navigation";
-import { db } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
+import { getServerCookies } from "@/lib/api-client-server";
+import { getClientById } from "@/lib/services/client.service";
+import { listServices } from "@/lib/services/service.service";
 import { ClientDetail } from "@/components/clients/client-detail";
-import { serialize } from "@/lib/utils";
 
 interface ClientPageProps {
   params: Promise<{ id: string }>;
 }
 
-async function getClientHistory(clientId: string) {
-  const client = await db.orm.public.Client.first({ id: clientId });
+async function getClientHistory(clientId: string, session: any, cookies: string) {
+  const client = await getClientById(clientId, session, cookies);
   if (!client) return null;
 
-  const services = await db.orm.public.Service
-    .where({ clientId })
-    .include("technician", (t: any) => t)
-    .include("payment", (p: any) => p)
-    .orderBy((s: any) => s.scheduledDate.desc())
-    .all();
+  const services = await listServices({ clientId }, session, cookies);
 
   const totalServices = services.length;
   const completedServices = services.filter(
     (s: any) => s.status === "COMPLETED"
   ).length;
   const totalPaid = services.reduce(
-    (sum: number, s: any) => sum + Number(s.payment?.amountPaid || 0),
+    (sum: number, s: any) => sum + Number((s as any).payment?.amountPaid || 0),
     0
   );
 
@@ -40,7 +37,9 @@ async function getClientHistory(clientId: string) {
 
 export default async function AdminClientPage({ params }: ClientPageProps) {
   const { id } = await params;
-  const clientHistory = await getClientHistory(id);
+  const session = await getSession();
+  const cookies = await getServerCookies();
+  const clientHistory = await getClientHistory(id, session, cookies);
 
   if (!clientHistory) {
     notFound();

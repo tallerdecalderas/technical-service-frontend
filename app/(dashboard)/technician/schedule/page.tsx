@@ -1,23 +1,20 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
-import { db } from "@/lib/prisma";
+import { getServerCookies } from "@/lib/api-client-server";
+import { listServices } from "@/lib/services/service.service";
 import { ScheduleCalendar } from "@/components/schedule/schedule-calendar";
-import { serialize } from "@/lib/utils";
 
 export default async function TechnicianSchedulePage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const rawServices = await db.orm.public.Service
-    .where({ technicianId: session.id })
-    .include("technician", (t: any) => t)
-    .include("client", (c: any) => c)
-    .include("createdBy", (u: any) => u)
-    .include("payment", (p: any) => p)
-    .orderBy((s: any) => s.scheduledDate.desc())
-    .all();
+  const cookies = await getServerCookies();
 
-  const services = serialize(rawServices as any);
+  const services = await listServices(
+    { technicianId: session.id },
+    session,
+    cookies
+  );
 
   return (
     <div className="space-y-6">

@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation"
-import { db } from "@/lib/prisma"
+import { getSession } from "@/lib/auth"
+import { getServerCookies } from "@/lib/api-client-server"
+import { getEstimateById } from "@/lib/services/estimate.service"
 import { EstimateDetail } from "@/components/estimates/estimate-detail"
-import { serialize } from "@/lib/utils"
 
 export const revalidate = 0 // Ensure fresh data on details page
 
@@ -11,10 +12,10 @@ interface EstimatePageProps {
 
 export default async function AdminEstimatePage({ params }: EstimatePageProps) {
   const { id } = await params
+  const session = await getSession();
+  const cookies = await getServerCookies();
 
-  const estimate = await db.orm.public.Estimate
-    .include("service", (s: any) => s.include("technician", (t: any) => t).include("client", (c: any) => c))
-    .first({ id })
+  const estimate = await getEstimateById(id, session, cookies)
 
   if (!estimate) {
     notFound()
@@ -31,7 +32,7 @@ export default async function AdminEstimatePage({ params }: EstimatePageProps) {
         </p>
       </div>
 
-      <EstimateDetail estimate={serialize(estimate as any)} />
+      <EstimateDetail estimate={estimate as any} />
     </div>
   )
 }

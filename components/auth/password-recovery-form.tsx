@@ -6,6 +6,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { apiClient } from "@/lib/api-client";
 
 export function PasswordRecoveryForm() {
   const [email, setEmail] = useState("");
@@ -19,17 +20,14 @@ export function PasswordRecoveryForm() {
     setError("");
     setLoading(true);
     try {
-      const response = await fetch("/api/auth/password/forgot", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+      const response = await apiClient.post<{ message: string }, { email: string }>("/auth/password/forgot", {
+        email,
       });
-      const result = await response.json();
-      if (!response.ok) {
-        setError(result.error ?? "No se pudo solicitar la recuperación.");
+      if (!response.success) {
+        setError(response.error?.message ?? "No se pudo solicitar la recuperación.");
         return;
       }
-      setMessage(result.message);
+      setMessage(response.data?.message);
     } catch {
       setError("No se pudo conectar con el servicio de autenticación.");
     } finally {

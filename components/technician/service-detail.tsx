@@ -46,6 +46,7 @@ import {
   X,
 } from "lucide-react";
 import type { Service, PaymentMethod } from "@/types";
+import { apiClient } from "@/lib/api-client";
 
 interface ServiceDetailProps {
   service: Service;
@@ -110,13 +111,12 @@ export function ServiceDetail({ service }: ServiceDetailProps) {
 
     setLoading(true);
     try {
-      const res = await fetch(`/api/services/${service.id}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus }),
-      });
+      const response = await apiClient.patch<{ success: boolean }, { status: string }>(
+        `/services/${service.id}/status`,
+        { status: newStatus },
+      );
 
-      if (!res.ok) throw new Error("Error al actualizar estado");
+      if (!response.success) throw new Error(response.error?.message || "Error al actualizar estado");
 
       setStatus(newStatus);
       toast.success("Servicio iniciado");
@@ -133,40 +133,61 @@ export function ServiceDetail({ service }: ServiceDetailProps) {
     setLoading(true);
 
     try {
-      // Upload receipt photo if provided
+      // Upload receipt photo to backend storage if provided
       let uploadedPhotoUrl: string | null = null;
       if (receiptPhoto) {
-        const formData = new FormData();
-        formData.append("file", receiptPhoto);
-        const uploadRes = await fetch("/api/upload", {
-          method: "POST",
-          body: formData,
-        });
-        if (uploadRes.ok) {
-          const uploadData = await uploadRes.json();
-          uploadedPhotoUrl = uploadData.url;
+        try {
+          const signed = await apiClient.post<
+            { data: { objectId: string; uploadUrl: string } },
+            any
+          >("/storage/signed-url", {
+            companyId: service.companyId,
+            entityType: "service",
+            entityId: service.id,
+            category: "receipts",
+            originalFilename: receiptPhoto.name,
+            contentType: receiptPhoto.type,
+            expectedSizeBytes: receiptPhoto.size,
+          });
+
+          if (signed.success && signed.data) {
+            // PUT directo a la URL firmada (almacenamiento local/R2 del backend)
+            await fetch(signed.data.uploadUrl, {
+              method: "PUT",
+              body: receiptPhoto,
+            });
+            await apiClient.post(
+              `/storage/objects/${signed.data.objectId}/confirm`,
+              {},
+            );
+            uploadedPhotoUrl = signed.data.uploadUrl;
+          }
+        } catch {
+          // La foto es opcional: no bloquea el cierre del servicio
         }
       }
 
       // First update status and save photo URL
-      const statusRes = await fetch(`/api/services/${service.id}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const statusResponse = await apiClient.patch<{ success: boolean }, any>(
+        `/services/${service.id}/status`,
+        {
           status: "COMPLETED",
           completedPhotoUrl: uploadedPhotoUrl,
-        }),
-      });
+        },
+      );
+
+      if (!statusResponse.success) {
+        throw new Error(statusResponse.error?.message || "Error al completar servicio");
+      }
 
       // Register payment (even if amount is 0 to track the service completion)
       const finalAmount = Number.parseFloat(amount) || 0;
       const finalDebt = effectiveDebt;
       const finalHasDebt = finalDebt > 0;
 
-      const paymentRes = await fetch("/api/payments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const paymentResponse = await apiClient.post<{ success: boolean }, any>(
+        "/payments",
+        {
           serviceId: service.id,
           amount: finalAmount,
           debtAmount: finalDebt,
@@ -175,10 +196,10 @@ export function ServiceDetail({ service }: ServiceDetailProps) {
           paymentType,
           technicianId: service.technicianId,
           receiptPhotoUrl: uploadedPhotoUrl,
-        }),
-      });
+        },
+      );
 
-      if (!paymentRes.ok) throw new Error("Error al registrar pago");
+      if (!paymentResponse.success) throw new Error("Error al registrar pago");
 
       setStatus("COMPLETED");
       setShowPayment(false);

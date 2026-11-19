@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import type { Client } from "@/types";
+import { apiClient } from "@/lib/api-client";
 
 interface NewClientDialogProps {
   open: boolean;
@@ -52,20 +53,15 @@ export function NewClientDialog({
     setLoading(true);
 
     try {
-      const res = await fetch("/api/clients", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
+      const response = await apiClient.post<{ client: Client }, typeof formData>("/clients", formData);
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Error al crear cliente");
+      if (!response.success) {
+        throw new Error(response.error?.message || "Error al crear cliente");
       }
 
-      const { data } = await res.json();
+      const { data } = response;
       toast.success("Cliente creado");
-      onClientCreated(data);
+      onClientCreated(data.client);
       setFormData({
         name: "",
         email: "",

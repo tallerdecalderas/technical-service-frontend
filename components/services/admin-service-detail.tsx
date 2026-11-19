@@ -32,6 +32,7 @@ import {
 import { ArrowLeft, MapPin, Phone, Clock, Edit } from "lucide-react";
 import type { Service, User as UserType, ServiceStatus } from "@/types";
 import { WhatsAppActions } from "@/components/whatsapp/whatsapp-actions";
+import { apiClient } from "@/lib/api-client";
 
 interface AdminServiceDetailProps {
   service: Service;
@@ -50,13 +51,12 @@ export function AdminServiceDetail({
   async function handleStatusChange(newStatus: ServiceStatus) {
     setLoading(true);
     try {
-      const res = await fetch(`/api/services/${service.id}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus }),
-      });
+      const response = await apiClient.patch<{ success: boolean }, { status: ServiceStatus }>(
+        `/services/${service.id}/status`,
+        { status: newStatus },
+      );
 
-      if (!res.ok) throw new Error("Error al actualizar");
+      if (!response.success) throw new Error(response.error?.message || "Error al actualizar");
 
       setStatus(newStatus);
       toast.success("Estado actualizado");
@@ -71,13 +71,12 @@ export function AdminServiceDetail({
   async function handleTechnicianChange(newTechnicianId: string) {
     setLoading(true);
     try {
-      const res = await fetch(`/api/services/${service.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ technicianId: newTechnicianId }),
-      });
+      const response = await apiClient.patch<{ success: boolean }, { technicianId: string }>(
+        `/services/${service.id}`,
+        { technicianId: newTechnicianId },
+      );
 
-      if (!res.ok) throw new Error("Error al actualizar");
+      if (!response.success) throw new Error(response.error?.message || "Error al actualizar");
 
       setTechnicianId(newTechnicianId);
       toast.success("Técnico asignado");

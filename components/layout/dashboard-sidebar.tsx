@@ -28,6 +28,7 @@ import {
   ClipboardList,
 } from "lucide-react"
 import { useState } from "react"
+import { apiClient } from "@/lib/api-client"
 import type { SessionUser } from "@/types"
 
 interface DashboardSidebarProps {
@@ -134,18 +135,10 @@ function LogoutButton() {
 
   async function handleLogout() {
     setError("")
-    const csrfCookieName = process.env.NEXT_PUBLIC_CSRF_COOKIE_NAME ?? "tech-service-csrf"
-    const csrfCookie = document.cookie
-      .split("; ")
-      .find((cookie) => cookie.startsWith(`${csrfCookieName}=`))
-    const csrfToken = csrfCookie ? decodeURIComponent(csrfCookie.slice(csrfCookieName.length + 1)) : ""
 
     try {
-      const response = await fetch("/api/auth/logout", {
-        method: "POST",
-        headers: csrfToken ? { "X-CSRF-Token": csrfToken } : {},
-      })
-      if (!response.ok) {
+      const response = await apiClient.post<{ success: boolean }, null>("/auth/logout", null)
+      if (!response.success) {
         setError("No se pudo cerrar la sesión. Inténtalo nuevamente.")
         return
       }

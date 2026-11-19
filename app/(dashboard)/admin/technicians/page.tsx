@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { db } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
+import { getServerCookies } from "@/lib/api-client-server";
 import {
   Card,
   CardContent,
@@ -12,18 +13,23 @@ import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
 import { Phone, Eye, Plus } from "lucide-react";
 import { TechnicianActions } from "@/components/technicians/technician-actions";
-import { serialize } from "@/lib/utils";
+import { listTechnicians } from "@/lib/services/technician.service";
+import { listPayments } from "@/lib/services/payment.service";
 import type { User } from "@/types";
 
 export default async function AdminTechniciansPage() {
-  const technicians = await db.orm.public.User.where({ role: "TECHNICIAN" }).all();
-  const payments = await db.orm.public.Payment.all();
+  const session = await getSession();
+  const cookies = await getServerCookies();
+  const [technicians, payments] = await Promise.all([
+    listTechnicians(cookies),
+    listPayments({}, session, cookies),
+  ]);
 
   // Calculate stats per technician
   const technicianStats = technicians.map((tech) => {
-    const techPayments = payments.filter((p) => p.technicianId === tech.id);
+    const techPayments = payments.filter((p: any) => p.technicianId === tech.id);
     const totalCollected = techPayments.reduce(
-      (sum, p) => sum + Number(p.amountPaid),
+      (sum: number, p: any) => sum + Number(p.amountPaid),
       0
     );
 
@@ -52,7 +58,7 @@ export default async function AdminTechniciansPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {serialize(technicianStats).map((tech) => (
+        {technicianStats.map((tech) => (
           <TechnicianCard key={tech.id} technician={tech} />
         ))}
       </div>

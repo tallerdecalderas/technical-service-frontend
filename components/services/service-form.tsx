@@ -38,6 +38,7 @@ import {
   buildWhatsAppUrl,
   type WhatsAppTemplateVars,
 } from "@/utils/helpers/whatsapp";
+import { apiClient } from "@/lib/api-client";
 
 interface ServiceFormProps {
   clients: Client[];
@@ -127,13 +128,9 @@ export function ServiceForm({
         window.open(url, "_blank");
       }
       // Log la acción
-      await fetch("/api/integrations/whatsapp/log", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          serviceId,
-          action: action === "copy" ? "COPIED" : "OPENED",
-        }),
+      await apiClient.post("/integrations/whatsapp/log", {
+        serviceId,
+        action: action === "copy" ? "COPIED" : "OPENED",
       });
     } catch {
       // No bloquear la UX por el log
@@ -145,29 +142,27 @@ export function ServiceForm({
     setLoading(true);
 
     try {
-      const url = service ? `/api/services/${service.id}` : "/api/services";
-      const method = service ? "PUT" : "POST";
+      const isEditing = !!service;
+      const path = isEditing ? `/services/${service.id}` : "/services";
 
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const response = await apiClient.patch<{ data: { id: string } }, any>(
+        path,
+        {
           ...formData,
           scheduledDate: new Date(`${formData.scheduledDate}T12:00:00`),
           expectedAmount: formData.expectedAmount
             ? Number.parseFloat(formData.expectedAmount)
             : null,
           createdById,
-        }),
-      });
+        },
+      );
 
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Error al guardar");
+      if (!response.success) {
+        throw new Error(response.error?.message || "Error al guardar");
       }
 
-      const result = await res.json();
-      const savedServiceId = result.data?.id || service?.id;
+      const result = response.data;
+      const savedServiceId = result?.id || service?.id;
 
       // Ejecutar acción WhatsApp si corresponde
       if (savedServiceId) {

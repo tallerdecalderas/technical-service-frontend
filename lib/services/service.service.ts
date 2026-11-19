@@ -32,6 +32,7 @@ export type FinishServiceInput = z.infer<typeof finishServiceSchema>;
 export async function listServices(
   filters: ServiceFilters,
   session: SessionUser,
+  cookies?: string
 ): Promise<Service[]> {
   const params: Record<string, string> = {};
 
@@ -51,7 +52,7 @@ export async function listServices(
   const response = await apiClient.get<{
     services: any[];
     meta: { page: number; pageSize: number; total: number; totalPages: number };
-  }>("/services", params);
+  }>("/services", params, cookies);
 
   if (!response.success) {
     throw new Error(response.error?.message || "Error al listar servicios");
@@ -64,8 +65,9 @@ export async function listServices(
 export async function getServiceById(
   id: string,
   session: SessionUser,
+  cookies?: string
 ): Promise<Service | null> {
-  const response = await apiClient.get<{ service: any }>(`/services/${id}`);
+  const response = await apiClient.get<{ service: any }>(`/services/${id}`, cookies);
 
   if (!response.success) {
     if (response.error?.code === "NOT_FOUND") return null;
@@ -85,7 +87,8 @@ export async function getServiceById(
 export async function createService(
   data: CreateServiceInput,
   session: SessionUser,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  cookies?: string
 ): Promise<Service> {
   if (session.role !== "ADMIN")
     throw new Error("Solo un Administrador puede crear órdenes");
@@ -104,7 +107,7 @@ export async function createService(
       expectedAmount: data.expectedAmount || null,
       finalAmount: data.finalAmount || null,
     },
-    { idempotencyKey }
+    { idempotencyKey, cookies }
   );
 
   if (!response.success) {
@@ -118,7 +121,8 @@ export async function updateService(
   id: string,
   data: UpdateServiceInput,
   session: SessionUser,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  cookies?: string
 ): Promise<Service> {
   if (session.role !== "ADMIN")
     throw new Error("Solo un Administrador puede modificar órdenes");
@@ -137,7 +141,7 @@ export async function updateService(
       expectedAmount: data.expectedAmount !== undefined ? data.expectedAmount || null : undefined,
       finalAmount: data.finalAmount !== undefined ? data.finalAmount || null : undefined,
     },
-    { idempotencyKey }
+    { idempotencyKey, cookies }
   );
 
   if (!response.success) {
@@ -151,12 +155,13 @@ export async function updateServiceStatus(
   id: string,
   data: UpdateStatusInput,
   session: SessionUser,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  cookies?: string
 ): Promise<Service> {
   const response = await apiClient.post<{ service: any }, UpdateStatusInput>(
     `/services/${id}/status`,
     { status: data.status },
-    { idempotencyKey }
+    { idempotencyKey, cookies }
   );
 
   if (!response.success) {
@@ -175,7 +180,8 @@ export async function finishService(
   id: string,
   data: FinishServiceInput,
   session: SessionUser,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  cookies?: string
 ): Promise<Service> {
   if (session.role !== "ADMIN")
     throw new Error("Solo un Administrador puede cerrar órdenes");
@@ -186,7 +192,7 @@ export async function finishService(
       finalAmount: data.finalAmount,
       observation: data.observation || null,
     },
-    { idempotencyKey }
+    { idempotencyKey, cookies }
   );
 
   if (!response.success) {
@@ -203,7 +209,8 @@ export async function finishService(
 export async function cancelService(
   id: string,
   session: SessionUser,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  cookies?: string
 ): Promise<Service> {
   if (session.role !== "ADMIN")
     throw new Error("Solo un Administrador puede cancelar órdenes");
@@ -211,7 +218,7 @@ export async function cancelService(
   const response = await apiClient.patch<{ service: any }>(
     `/services/${id}`,
     { status: "CANCELLED" },
-    { idempotencyKey }
+    { idempotencyKey, cookies }
   );
 
   if (!response.success) {
@@ -225,10 +232,11 @@ export async function cancelService(
 export async function getServiceHistory(
   id: string,
   session: SessionUser,
+  cookies?: string
 ): Promise<any[]> {
   const response = await apiClient.get<{
     activities: any[];
-  }>(`/services/${id}/history`);
+  }>(`/services/${id}/history`, cookies);
 
   if (!response.success) {
     throw new Error(response.error?.message || "Error al obtener historial");
@@ -244,7 +252,8 @@ export async function getSchedule(
     dateFrom?: string;
     dateTo?: string;
     technicianId?: string;
-  }
+  },
+  cookies?: string
 ): Promise<any[]> {
   const queryParams: Record<string, string> = {};
 
@@ -257,7 +266,7 @@ export async function getSchedule(
   if (params?.dateFrom) queryParams.dateFrom = params.dateFrom;
   if (params?.dateTo) queryParams.dateTo = params.dateTo;
 
-  const response = await apiClient.get<{ services: any[] }>("/schedule", queryParams);
+  const response = await apiClient.get<{ services: any[] }>("/schedule", queryParams, cookies);
 
   if (!response.success) {
     throw new Error(response.error?.message || "Error al obtener agenda");

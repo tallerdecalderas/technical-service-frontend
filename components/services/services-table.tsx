@@ -31,6 +31,7 @@ import {
 } from "@/lib/utils";
 import { Search, Eye, Calendar, Filter, Pencil, Trash2 } from "lucide-react";
 import type { Service, User, ServiceStatus } from "@/types";
+import { apiClient } from "@/lib/api-client";
 
 interface ServicesTableProps {
   services: Service[];
@@ -55,15 +56,12 @@ export function ServicesTable({ services, technicians }: ServicesTableProps) {
     }
 
     try {
-      const res = await fetch(`/api/services/${id}`, {
-        method: "DELETE",
-      });
+      const response = await apiClient.delete(`/services/${id}`);
 
-      if (res.ok) {
+      if (response.success) {
         router.refresh();
       } else {
-        const data = await res.json();
-        alert(data.error || "Error al eliminar el servicio");
+        alert(response.error?.message || "Error al eliminar el servicio");
       }
     } catch (error) {
       console.error("Delete error:", error);

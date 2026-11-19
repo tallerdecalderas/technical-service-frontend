@@ -20,11 +20,10 @@ export type AddServicePartInput = z.infer<typeof addServicePartSchema>;
 export type UpdateServicePartInput = z.infer<typeof updateServicePartSchema>;
 
 export async function listServiceParts(
-    serviceId: string,
-): Promise<ServicePart[]> {
+    serviceId: string,    cookies?: string,): Promise<ServicePart[]> {
     const response = await apiClient.get<{ parts: any[] }>(
-        `/services/${serviceId}/parts`
-    );
+        `/services/${serviceId}/parts`,
+        cookies,
 
     if (!response.success) {
         throw new Error(response.error?.message || "Error al listar repuestos");
@@ -49,7 +48,8 @@ export async function addServicePart(
     serviceId: string,
     data: AddServicePartInput,
     session: SessionUser,
-    idempotencyKey?: string
+    idempotencyKey?: string,
+    cookies?: string,
 ): Promise<ServicePart> {
     const response = await apiClient.post<{ part: any }, AddServicePartInput>(
         `/services/${serviceId}/parts`,
@@ -61,7 +61,7 @@ export async function addServicePart(
             unitCost: data.unitCost,
             unitSalePrice: data.unitSalePrice,
         },
-        { idempotencyKey }
+        { idempotencyKey, cookies }
     );
 
     if (!response.success) {
@@ -88,7 +88,8 @@ export async function updateServicePart(
     partId: string,
     data: UpdateServicePartInput,
     session: SessionUser,
-    idempotencyKey?: string
+    idempotencyKey?: string,
+    cookies?: string,
 ): Promise<ServicePart> {
     const response = await apiClient.patch<{ part: any }, UpdateServicePartInput>(
         `/services/parts/${partId}`,
@@ -99,7 +100,7 @@ export async function updateServicePart(
             name: data.name,
             nota: data.nota,
         },
-        { idempotencyKey }
+        { idempotencyKey, cookies }
     );
 
     if (!response.success) {
@@ -125,11 +126,11 @@ export async function updateServicePart(
 export async function removeServicePart(
     partId: string,
     session: SessionUser,
-    idempotencyKey?: string
+    idempotencyKey?: string,
+    cookies?: string,
 ): Promise<void> {
     const response = await apiClient.delete(`/services/parts/${partId}`, {
-        idempotencyKey,
-    });
+        idempotencyKey,        cookies,    });
 
     if (!response.success) {
         throw new Error(response.error?.message || "Error al eliminar repuesto");

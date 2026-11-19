@@ -18,8 +18,8 @@ import type {
 export type CreateCompanyInput = z.infer<typeof createCompanySchema>;
 export type UpdateCompanyInput = z.infer<typeof updateCompanySchema>;
 
-export async function listCompanies(session?: SessionUser): Promise<Company[]> {
-    const response = await apiClient.get<{ companies: any[] }>("/companies");
+export async function listCompanies(session?: SessionUser, cookies?: string): Promise<Company[]> {
+    const response = await apiClient.get<{ companies: any[] }>("/companies", cookies);
 
     if (!response.success) {
         throw new Error(response.error?.message || "Error al listar empresas");
@@ -37,8 +37,8 @@ export async function listCompanies(session?: SessionUser): Promise<Company[]> {
     }) as unknown as Company);
 }
 
-export async function listActiveCompanies(session?: SessionUser): Promise<Company[]> {
-    const response = await apiClient.get<{ companies: any[] }>("/companies?isActive=true");
+export async function listActiveCompanies(session?: SessionUser, cookies?: string): Promise<Company[]> {
+    const response = await apiClient.get<{ companies: any[] }>("/companies?isActive=true", cookies);
 
     if (!response.success) {
         throw new Error(response.error?.message || "Error al listar empresas activas");
@@ -56,8 +56,8 @@ export async function listActiveCompanies(session?: SessionUser): Promise<Compan
     }) as unknown as Company);
 }
 
-export async function getCompanyById(id: string, session?: SessionUser): Promise<Company | null> {
-    const response = await apiClient.get<{ company: any }>(`/companies/${id}`);
+export async function getCompanyById(id: string, session?: SessionUser, cookies?: string): Promise<Company | null> {
+    const response = await apiClient.get<{ company: any }>(`/companies/${id}`, cookies);
 
     if (!response.success) {
         if (response.error?.code === "NOT_FOUND") return null;
@@ -80,7 +80,8 @@ export async function getCompanyById(id: string, session?: SessionUser): Promise
 export async function createCompany(
     data: CreateCompanyInput,
     session: SessionUser,
-    idempotencyKey?: string
+    idempotencyKey?: string,
+    cookies?: string
 ): Promise<Company> {
     if (session.role !== "ADMIN")
         throw new Error("Solo un Administrador puede crear empresas");
@@ -94,7 +95,7 @@ export async function createCompany(
             defaultMarginPercent: data.defaultMarginPercent || 0,
             isActive: true,
         },
-        { idempotencyKey }
+        { idempotencyKey, cookies }
     );
 
     if (!response.success) {
@@ -118,7 +119,8 @@ export async function updateCompany(
     id: string,
     data: UpdateCompanyInput,
     session: SessionUser,
-    idempotencyKey?: string
+    idempotencyKey?: string,
+    cookies?: string
 ): Promise<Company> {
     if (session.role !== "ADMIN")
         throw new Error("Solo un Administrador puede modificar empresas");
@@ -132,7 +134,7 @@ export async function updateCompany(
             defaultMarginPercent: data.defaultMarginPercent,
             isActive: data.isActive,
         },
-        { idempotencyKey }
+        { idempotencyKey, cookies }
     );
 
     if (!response.success) {

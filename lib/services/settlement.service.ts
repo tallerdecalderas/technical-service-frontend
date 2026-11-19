@@ -160,7 +160,8 @@ export async function generateSettlement(
 export async function liquidateSettlement(
   id: string,
   session: SessionUser,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  cookies?: string
 ): Promise<Settlement> {
   if (session.role !== "ADMIN")
     throw new Error("Solo un Administrador puede liquidar rendiciones");
@@ -168,7 +169,7 @@ export async function liquidateSettlement(
   const response = await apiClient.patch<{ settlement: any }>(
     `/settlements/${id}`,
     { status: "PAID" },
-    { idempotencyKey }
+    { idempotencyKey, cookies }
   );
 
   if (!response.success) {

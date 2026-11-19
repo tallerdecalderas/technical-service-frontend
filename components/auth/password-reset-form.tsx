@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { apiClient } from "@/lib/api-client";
 
 export function PasswordResetForm() {
   const router = useRouter();
@@ -28,14 +29,12 @@ export function PasswordResetForm() {
     setError("");
     setLoading(true);
     try {
-      const response = await fetch("/api/auth/password/reset", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accessToken, password }),
+      const response = await apiClient.post<{ message: string }, { accessToken: string; password: string }>("/auth/password/reset", {
+        accessToken,
+        password,
       });
-      const result = await response.json();
-      if (!response.ok) {
-        setError(result.error ?? "El enlace expiró o no es válido.");
+      if (!response.success) {
+        setError(response.error?.message ?? "El enlace expiró o no es válido.");
         return;
       }
       router.replace("/login?passwordReset=1");

@@ -24,6 +24,7 @@ export type CreateEstimateInput = z.infer<typeof createEstimateSchema>;
 export async function listEstimates(
   filters: EstimateFilters,
   session: SessionUser,
+  cookies?: string
 ): Promise<Estimate[]> {
   const params: Record<string, string> = {};
 
@@ -39,7 +40,7 @@ export async function listEstimates(
   const response = await apiClient.get<{
     estimates: any[];
     meta: { page: number; pageSize: number; total: number; totalPages: number };
-  }>("/estimates", params);
+  }>("/estimates", params, cookies);
 
   if (!response.success) {
     throw new Error(response.error?.message || "Error al listar presupuestos");
@@ -52,8 +53,9 @@ export async function listEstimates(
 export async function getEstimateById(
   id: string,
   session: SessionUser,
+  cookies?: string
 ): Promise<Estimate | null> {
-  const response = await apiClient.get<{ estimate: any }>(`/estimates/${id}`);
+  const response = await apiClient.get<{ estimate: any }>(`/estimates/${id}`, cookies);
 
   if (!response.success) {
     if (response.error?.code === "NOT_FOUND") return null;
@@ -71,9 +73,11 @@ export async function getEstimateById(
 
 export async function getEstimateByService(
   serviceId: string,
+  cookies?: string
 ): Promise<Estimate | null> {
   const response = await apiClient.get<{ estimate: any }>(
-    `/estimates?serviceId=${serviceId}`
+    `/estimates?serviceId=${serviceId}`,
+    cookies,
   );
 
   if (!response.success) {
@@ -88,7 +92,8 @@ export async function getEstimateByService(
 export async function createEstimate(
   data: CreateEstimateInput,
   session: SessionUser,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  cookies?: string
 ): Promise<Estimate> {
   const response = await apiClient.post<{ estimate: any }, CreateEstimateInput>(
     "/estimates",
@@ -98,7 +103,7 @@ export async function createEstimate(
       validUntil: data.validUntil || null,
       notes: data.notes || null,
     },
-    { idempotencyKey }
+    { idempotencyKey, cookies }
   );
 
   if (!response.success) {
@@ -111,7 +116,8 @@ export async function createEstimate(
 export async function finalizeEstimate(
   id: string,
   session: SessionUser,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  cookies?: string
 ): Promise<Estimate> {
   if (session.role !== "ADMIN")
     throw new Error(
@@ -121,7 +127,7 @@ export async function finalizeEstimate(
   const response = await apiClient.patch<{ estimate: any }>(
     `/estimates/${id}`,
     { status: "FINALIZED" },
-    { idempotencyKey }
+    { idempotencyKey, cookies }
   );
 
   if (!response.success) {

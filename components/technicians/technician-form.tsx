@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import type { User } from "@/types";
 import { Switch } from "@/components/ui/switch";
+import { apiClient } from "@/lib/api-client";
 
 interface TechnicianFormProps {
   technician?: User;
@@ -32,10 +33,9 @@ export function TechnicianForm({ technician }: TechnicianFormProps) {
 
     try {
       const isEditing = !!technician;
-      const url = isEditing
-        ? `/api/technicians/${technician.id}`
-        : "/api/technicians";
-      const method = isEditing ? "PUT" : "POST";
+      const path = isEditing
+        ? `/technicians/${technician.id}`
+        : "/technicians";
 
       const body: any = {
         ...formData,
@@ -47,16 +47,10 @@ export function TechnicianForm({ technician }: TechnicianFormProps) {
         delete body.password;
       }
 
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+      const response = await apiClient.patch<{ success: boolean }, any>(path, body);
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Error al guardar");
+      if (!response.success) {
+        throw new Error(response.error?.message || "Error al guardar");
       }
 
       toast.success(

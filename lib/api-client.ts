@@ -70,11 +70,14 @@ class ApiClient {
   private headers(
     init: RequestInit = {},
     cookies?: string,
-    idempotencyKey?: string
+    idempotencyKey?: string,
+    contentType: string = "application/json"
   ): HeadersInit {
     const h = new Headers(init.headers);
     h.set("Accept", "application/json");
-    h.set("Content-Type", "application/json");
+    if (contentType) {
+      h.set("Content-Type", contentType);
+    }
 
     const session = this.getCookie(SESSION_COOKIE_NAME, cookies);
     if (session) {
@@ -160,12 +163,21 @@ class ApiClient {
       cookies?: string;
     } = {}
   ): Promise<ApiResponse<T>> {
+    const isFormData =
+      typeof FormData !== "undefined" && body instanceof FormData;
     const response = await fetch(`${this.base}${path}`, {
       method: "POST",
       headers: this.headers(
-        { body: body ? JSON.stringify(body) : undefined },
+        {
+          body: isFormData
+            ? (body as Body)
+            : body
+            ? JSON.stringify(body)
+            : undefined,
+        },
         options.cookies,
-        options.idempotencyKey
+        options.idempotencyKey,
+        isFormData ? undefined : "application/json"
       ),
     });
 

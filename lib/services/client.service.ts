@@ -26,7 +26,8 @@ export async function listClients(
     pageSize?: number;
     search?: string;
   },
-  session?: SessionUser
+  session?: SessionUser,
+  cookies?: string
 ): Promise<{ clients: Client[]; page: number; pageSize: number; total: number; totalPages: number }> {
   const response = await apiClient.get<{
     clients: any[];
@@ -35,7 +36,7 @@ export async function listClients(
     page: params?.page ?? 1,
     pageSize: params?.pageSize ?? 20,
     search: params?.search ?? "",
-  });
+  }, cookies);
 
   if (!response.success) {
     throw new Error(response.error?.message || "Error al listar clientes");
@@ -54,9 +55,10 @@ export async function listClients(
 /** Obtiene un cliente por ID con sus servicios recientes. */
 export async function getClientById(
   id: string,
-  session?: SessionUser
+  session?: SessionUser,
+  cookies?: string
 ): Promise<Client | null> {
-  const response = await apiClient.get<{ client: any }>(`/clients/${id}`);
+  const response = await apiClient.get<{ client: any }>(`/clients/${id}`, cookies);
 
   if (!response.success) {
     if (response.error?.code === "NOT_FOUND") return null;
@@ -70,7 +72,8 @@ export async function getClientById(
 export async function createClient(
   data: CreateClientInput,
   session?: SessionUser,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  cookies?: string
 ): Promise<Client> {
   const response = await apiClient.post<{ client: any }, CreateClientInput>(
     "/clients",
@@ -81,7 +84,7 @@ export async function createClient(
       address: data.address || null,
       locality: data.locality || null,
     },
-    { idempotencyKey }
+    { idempotencyKey, cookies }
   );
 
   if (!response.success) {
@@ -96,7 +99,8 @@ export async function updateClient(
   id: string,
   data: UpdateClientInput,
   session?: SessionUser,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  cookies?: string
 ): Promise<Client> {
   const response = await apiClient.patch<{ client: any }, UpdateClientInput>(
     `/clients/${id}`,
@@ -107,7 +111,7 @@ export async function updateClient(
       address: data.address !== undefined ? data.address || null : undefined,
       locality: data.locality !== undefined ? data.locality || null : undefined,
     },
-    { idempotencyKey }
+    { idempotencyKey, cookies }
   );
 
   if (!response.success) {
@@ -124,10 +128,12 @@ export async function updateClient(
 export async function removeClient(
   id: string,
   session?: SessionUser,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  cookies?: string
 ): Promise<void> {
   const response = await apiClient.delete(`/clients/${id}`, {
     idempotencyKey,
+    cookies,
   });
 
   if (!response.success) {

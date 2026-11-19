@@ -16,7 +16,6 @@ import { Input } from "@/components/ui/input";
 import { formatDate } from "@/lib/utils";
 import { Search, Users, Eye, MapPin, Phone, Delete, Edit } from "lucide-react";
 import type { Client } from "@/types";
-import { NextResponse } from "next/server";
 
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -30,6 +29,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { apiClient } from "@/lib/api-client";
 
 interface ClientsTableProps {
   clients: Client[];
@@ -44,14 +44,10 @@ export function ClientsTable({ clients }: ClientsTableProps) {
     if (!deletingId) return;
 
     try {
-      const res = await fetch(`/api/clients/${deletingId}`, {
-        method: "DELETE",
-      });
+      const response = await apiClient.delete(`/clients/${deletingId}`);
 
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || "Error al eliminar");
+      if (!response.success) {
+        throw new Error(response.error?.message || "Error al eliminar");
       }
 
       toast.success("Cliente eliminado correctamente");

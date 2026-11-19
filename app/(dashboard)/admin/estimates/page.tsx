@@ -1,14 +1,14 @@
-import { db } from "@/lib/prisma"
+import { getSession } from "@/lib/auth";
+import { getServerCookies } from "@/lib/api-client-server";
+import { listEstimates } from "@/lib/services/estimate.service";
 import { EstimatesTable } from "@/components/estimates/estimates-table"
-import { serialize } from "@/lib/utils"
 
 export const revalidate = 0 // Disable static cache for estimates to ensure real-time status
 
 export default async function AdminEstimatesPage() {
-  const estimates = await db.orm.public.Estimate
-    .include("service", (s: any) => s.include("client", (c: any) => c))
-    .orderBy((e: any) => e.createdAt.desc())
-    .all()
+  const session = await getSession();
+  const cookies = await getServerCookies();
+  const estimates = await listEstimates({}, session, cookies);
 
   return (
     <div className="space-y-6">
@@ -19,7 +19,7 @@ export default async function AdminEstimatesPage() {
         </p>
       </div>
 
-      <EstimatesTable initialEstimates={serialize(estimates as any)} />
+      <EstimatesTable initialEstimates={estimates as any} />
     </div>
   )
 }

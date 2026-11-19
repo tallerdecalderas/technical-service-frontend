@@ -1,6 +1,9 @@
-import { db } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { redirect, notFound } from "next/navigation";
+import { getServerCookies } from "@/lib/api-client-server";
+import { getServiceById } from "@/lib/services/service.service";
+import { listClients } from "@/lib/services/client.service";
+import { listTechnicians } from "@/lib/services/technician.service";
 import { ServiceForm } from "@/components/services/service-form";
 
 interface EditServicePageProps {
@@ -16,16 +19,19 @@ export default async function EditServicePage({
   }
 
   const { id } = await params;
+  const cookies = await getServerCookies();
 
-  const service = await db.orm.public.Service.first({ id });
+  const [service, clientsResult, technicians] = await Promise.all([
+    getServiceById(id, session, cookies),
+    listClients(undefined, undefined, cookies),
+    listTechnicians(cookies),
+  ]);
 
   if (!service) {
     notFound();
   }
 
-  const clients = await db.orm.public.Client.orderBy((c: any) => c.createdAt.desc()).all();
-
-  const technicians = await db.orm.public.User.where({ role: "TECHNICIAN" }).all();
+  const clients = clientsResult.clients;
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">

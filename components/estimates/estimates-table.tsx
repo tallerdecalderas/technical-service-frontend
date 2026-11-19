@@ -20,6 +20,7 @@ import { formatDate, formatCurrency } from "@/lib/utils"
 import { Search, Eye, CheckCircle, FileText, ClipboardList } from "lucide-react"
 import type { Estimate } from "@/types"
 import { toast } from "sonner"
+import { apiClient } from "@/lib/api-client"
 
 interface EstimatesTableProps {
   initialEstimates: Estimate[]
@@ -42,17 +43,13 @@ export function EstimatesTable({ initialEstimates }: EstimatesTableProps) {
 
     setIsLoading(id)
     try {
-      const res = await fetch(`/api/estimates/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-      })
+      const response = await apiClient.patch<{ success: boolean }, null>(`/estimates/${id}`, null)
 
-      const data = await res.json()
-      if (res.ok && data.success) {
+      if (response.success) {
         toast.success("Presupuesto finalizado correctamente")
         router.refresh()
       } else {
-        toast.error(data.error || "Error al finalizar el presupuesto")
+        toast.error(response.error?.message || "Error al finalizar el presupuesto")
       }
     } catch (error) {
       console.error(error)

@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
-import { db } from "@/lib/prisma";
+import { getServerCookies } from "@/lib/api-client-server";
+import { listServices } from "@/lib/services/service.service";
 import { TechnicianAgenda } from "@/components/technician/technician-agenda";
 import { TechnicianStats } from "@/components/technician/technician-stats";
-import { serialize, startOfDayInstant } from "@/lib/utils";
+import { startOfDayInstant } from "@/lib/utils";
 
 export default async function TechnicianDashboardPage() {
   const session = await getSession();
@@ -12,24 +13,26 @@ export default async function TechnicianDashboardPage() {
     redirect("/login");
   }
 
+  const cookies = await getServerCookies();
   const startOfDay = startOfDayInstant();
 
-  const todayServices = await db.orm.public.Service
-    .where({ technicianId: session.id })
-    .where((s) => s.scheduledDate.gte(startOfDay))
-    .where((s) => s.status.neq("CANCELLED"))
-    .include("technician", (t) => t)
-    .include("client", (c) => c)
-    .include("createdBy", (u) => u)
-    .include("payment", (p) => p)
-    .orderBy((s) => s.scheduledDate.asc())
-    .all();
+  const todayServices = await listServices(
+    { technicianId: session.id, status: undefined },
+    session,
+    cookies
+  );
+
+  const nonCancelled = todayServices.filter((s: any) => s.status !== "CANCELLED");
+  const todayServicesFiltered = nonCancelled.filter((s: any) => {
+    const d = new Date(s.scheduledDate);
+    return d >= startOfDay;
+  });
 
   const stats = {
-    todayCount: todayServices.length,
-    pendingCount: todayServices.filter((s) => s.status === "PENDING").length,
-    inProgressCount: todayServices.filter((s) => s.status === "IN_PROGRESS").length,
-    completedCount: todayServices.filter((s) => s.status === "COMPLETED").length,
+    todayCount: todayServicesFiltered.length,
+    pendingCount: todayServicesFiltered.filter((s: any) => s.status === "PENDING").length,
+    inProgressCount: todayServicesFiltered.filter((s: any) => s.status === "IN_PROGRESS").length,
+    completedCount: todayServicesFiltered.filter((s: any) => s.status === "COMPLETED").length,
   };
 
   return (

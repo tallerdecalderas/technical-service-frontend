@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
-import { db } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { getServerCookies } from "@/lib/api-client-server";
+import { getClientById } from "@/lib/services/client.service";
 import { ClientForm } from "@/components/clients/client-form";
 
 interface EditClientPageProps {
@@ -15,7 +16,8 @@ export default async function EditClientPage({ params }: EditClientPageProps) {
   }
 
   const { id } = await params;
-  const client = await db.orm.public.Client.first({ id });
+  const cookies = await getServerCookies();
+  const client = await getClientById(id, session, cookies);
 
   if (!client) {
     notFound();

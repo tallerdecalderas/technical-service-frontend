@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import type { User } from "@/types";
+import { apiClient } from "@/lib/api-client";
 
 interface TechnicianActionsProps {
   technician: User;
@@ -39,11 +40,9 @@ export function TechnicianActions({ technician }: TechnicianActionsProps) {
   async function handleDelete() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/technicians/${technician.id}`, {
-        method: "DELETE",
-      });
+      const response = await apiClient.delete(`/technicians/${technician.id}`);
 
-      if (!res.ok) throw new Error("Error al eliminar");
+      if (!response.success) throw new Error(response.error?.message || "Error al eliminar");
 
       toast.success("Técnico eliminado");
       router.refresh();

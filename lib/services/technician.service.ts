@@ -25,11 +25,11 @@ export type UpdateTechnicianInput = Parameters<
   typeof updateTechnicianSchema.parse
 >[0];
 
-export async function listTechnicians(): Promise<User[]> {
+export async function listTechnicians(cookies?: string): Promise<User[]> {
   const response = await apiClient.get<{
     technicians: any[];
     meta: { page: number; pageSize: number; total: number; totalPages: number };
-  }>("/technicians");
+  }>("/technicians", cookies);
 
   if (!response.success) {
     throw new Error(response.error?.message || "Error al listar técnicos");
@@ -39,11 +39,11 @@ export async function listTechnicians(): Promise<User[]> {
   return adapted.technicians;
 }
 
-export async function listUsers(): Promise<User[]> {
+export async function listUsers(cookies?: string): Promise<User[]> {
   const response = await apiClient.get<{
     technicians: any[];
     meta: { page: number; pageSize: number; total: number; totalPages: number };
-  }>("/technicians");
+  }>("/technicians", cookies);
 
   if (!response.success) {
     throw new Error(response.error?.message || "Error al listar usuarios");
@@ -55,9 +55,11 @@ export async function listUsers(): Promise<User[]> {
 
 export async function getTechnicianById(
   id: string,
+  cookies?: string,
 ): Promise<User | null> {
   const response = await apiClient.get<{ technician: any }>(
-    `/technicians/${id}`
+    `/technicians/${id}`,
+    cookies,
   );
 
   if (!response.success) {
@@ -71,7 +73,8 @@ export async function getTechnicianById(
 /** Crea un nuevo técnico (a través de Supabase Auth + backend Go). */
 export async function createTechnician(
   data: CreateTechnicianInput,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  cookies?: string
 ): Promise<User> {
   const response = await apiClient.post<{ technician: any }, CreateTechnicianInput>(
     "/technicians",
@@ -81,7 +84,7 @@ export async function createTechnician(
       phone: data.phone || null,
       dni: data.dni || null,
     },
-    { idempotencyKey }
+    { idempotencyKey, cookies }
   );
 
   if (!response.success) {
@@ -94,7 +97,8 @@ export async function createTechnician(
 export async function updateTechnician(
   id: string,
   data: UpdateTechnicianInput,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  cookies?: string
 ): Promise<User> {
   const response = await apiClient.patch<{ technician: any }, UpdateTechnicianInput>(
     `/technicians/${id}`,
@@ -105,7 +109,7 @@ export async function updateTechnician(
       dni: data.dni !== undefined ? data.dni || null : undefined,
       isActive: data.isActive,
     },
-    { idempotencyKey }
+    { idempotencyKey, cookies }
   );
 
   if (!response.success) {
@@ -118,8 +122,8 @@ export async function updateTechnician(
 /**
  * Realiza soft delete si el técnico tiene historial, hard delete si no.
  */
-export async function removeTechnician(id: string): Promise<void> {
-  const response = await apiClient.delete(`/technicians/${id}`);
+export async function removeTechnician(id: string, cookies?: string): Promise<void> {
+  const response = await apiClient.delete(`/technicians/${id}`, { cookies });
 
   if (!response.success) {
     throw new Error(response.error?.message || "Error al eliminar técnico");

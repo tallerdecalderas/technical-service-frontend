@@ -1,20 +1,19 @@
-import { db } from "@/lib/prisma"
+import { getSession } from "@/lib/auth";
+import { getServerCookies } from "@/lib/api-client-server";
+import { listPayments } from "@/lib/services/payment.service";
+import { listTechnicians } from "@/lib/services/technician.service";
 import { PaymentsTable } from "@/components/paymentsRendition/payments-table"
-import { serialize } from "@/lib/utils"
 
 // Cache for 30 seconds - payments data updates frequently
 export const revalidate = 30
 
 export default async function AdminPaymentsPage() {
-  const payments = await db.orm.public.Payment
-    .include("service", (s: any) => s.include("client", (c: any) => c))
-    .include("technician", (t: any) => t)
-    .orderBy((p: any) => p.createdAt.desc())
-    .all()
-
-  const technicians = await db.orm.public.User
-    .where({ role: "TECHNICIAN" })
-    .all()
+  const session = await getSession();
+  const cookies = await getServerCookies();
+  const [payments, technicians] = await Promise.all([
+    listPayments({}, session, cookies),
+    listTechnicians(cookies),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -26,8 +25,8 @@ export default async function AdminPaymentsPage() {
       </div>
 
       <PaymentsTable
-        payments={serialize(payments as any)}
-        technicians={serialize(technicians as any)}
+        payments={payments as any}
+        technicians={technicians as any}
       />
     </div>
   )

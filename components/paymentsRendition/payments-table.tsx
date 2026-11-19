@@ -21,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { apiClient } from "@/lib/api-client";
 import {
   Dialog,
   DialogContent,
@@ -137,17 +138,13 @@ export function PaymentsTable({ payments, technicians }: PaymentsTableProps) {
 
     setLoadingId(selectedPayment.id);
     try {
-      const res = await fetch(`/api/payments/${selectedPayment.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          settleAll
-            ? { debtAmount: 0, hasDebt: false }
-            : { additionalPayment: additional },
-        ),
+      const response = await apiClient.patch<{ success: boolean }, any>(`/payments/${selectedPayment.id}`, {
+        ...(settleAll
+          ? { debtAmount: 0, hasDebt: false }
+          : { additionalPayment: additional }),
       });
 
-      if (res.ok) {
+      if (response.success) {
         const newDebt = Math.max(0, currentState.debtAmount - additional);
         setLocalPaymentState((prev) => ({
           ...prev,

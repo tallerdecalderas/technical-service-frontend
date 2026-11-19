@@ -2,8 +2,9 @@
  * ActivityLog Service — taller de calderas
  * Registra el historial de acciones sobre Órdenes de Trabajo.
  * Documentación: docs/reglas-negocio.md, docs/ordenes.md
+ * Ahora consume la API Go en lugar de Prisma.
  */
-import { db } from "@/lib/prisma";
+import { apiClient } from "@/lib/api-client";
 import type { ActivityLog } from "@/types";
 
 export const ACTIONS = {
@@ -40,15 +41,16 @@ export async function logActivity(
   action: ActionType,
   description: string,
   metadata?: Record<string, unknown>,
+  cookies?: string,
 ): Promise<void> {
   try {
-    await db.orm.public.ActivityLog.create({
+    await apiClient.post("/activity-logs", {
       serviceId,
       userId,
       action,
       description,
-      metadata: metadata ? (metadata as any) : null,
-    });
+      metadata: metadata ?? null,
+    }, { cookies });
   } catch (err) {
     console.error("[ActivityLog] Error registrando historial:", err);
   }
@@ -59,10 +61,17 @@ export async function logActivity(
  */
 export async function getServiceHistory(
   serviceId: string,
+  cookies?: string,
 ): Promise<ActivityLog[]> {
-  return db.orm.public.ActivityLog
-    .where({ serviceId })
-    .include("user", u => u)
-    .orderBy(log => log.createdAt.asc())
-    .all() as unknown as Promise<ActivityLog[]>;
+  try {
+    const response = await apiClient.get<{ logs: ActivityLog[] }>(
+      `/activity-logs?serviceId=${serviceId}`,
+    cookies,
+  );
+    if (!response.success) return [];
+    return (response.data?.logs || []) as ActivityLog[];
+  } catch (err) {
+    console.error("[ActivityLog] Error obteniendo historial:", err);
+    return [];
+  }
 }

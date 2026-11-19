@@ -26,6 +26,7 @@ import {
   FileText,
 } from "lucide-react"
 import type { Estimate } from "@/types"
+import { apiClient } from "@/lib/api-client"
 
 interface EstimateDetailProps {
   estimate: Estimate
@@ -47,18 +48,14 @@ export function EstimateDetail({ estimate }: EstimateDetailProps) {
 
     setLoading(true)
     try {
-      const res = await fetch(`/api/estimates/${estimate.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-      })
+      const response = await apiClient.patch<{ success: boolean }, null>(`/estimates/${estimate.id}`, null)
 
-      const data = await res.json()
-      if (res.ok && data.success) {
+      if (response.success) {
         setStatus("COMPLETED")
         toast.success("Presupuesto marcado como Finalizado con éxito")
         router.refresh()
       } else {
-        toast.error(data.error || "Error al procesar la solicitud")
+        toast.error(response.error?.message || "Error al procesar la solicitud")
       }
     } catch (error) {
       console.error(error)

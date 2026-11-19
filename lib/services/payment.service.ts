@@ -29,6 +29,7 @@ export type UpdatePaymentInput = z.infer<typeof updatePaymentSchema>;
 export async function listPayments(
   filters: PaymentFilters,
   session: SessionUser,
+  cookies?: string
 ): Promise<Payment[]> {
   const params: Record<string, string> = {};
 
@@ -51,7 +52,7 @@ export async function listPayments(
   const response = await apiClient.get<{
     payments: any[];
     meta: { page: number; pageSize: number; total: number; totalPages: number };
-  }>("/payments", params);
+  }>("/payments", params, cookies);
 
   if (!response.success) {
     throw new Error(response.error?.message || "Error al listar cobros");
@@ -64,8 +65,9 @@ export async function listPayments(
 export async function getPaymentById(
   id: string,
   session: SessionUser,
+  cookies?: string
 ): Promise<Payment | null> {
-  const response = await apiClient.get<{ payment: any }>(`/payments/${id}`);
+  const response = await apiClient.get<{ payment: any }>(`/payments/${id}`, cookies);
 
   if (!response.success) {
     if (response.error?.code === "NOT_FOUND") return null;
@@ -84,9 +86,11 @@ export async function getPaymentById(
 
 export async function getPaymentByService(
   serviceId: string,
+  cookies?: string
 ): Promise<Payment | null> {
   const response = await apiClient.get<{ payment: any }>(
-    `/payments?serviceId=${serviceId}`
+    `/payments?serviceId=${serviceId}`,
+    cookies,
   );
 
   if (!response.success) {
@@ -101,7 +105,8 @@ export async function getPaymentByService(
 export async function createPayment(
   data: CreatePaymentInput,
   session: SessionUser,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  cookies?: string
 ): Promise<Payment> {
   const response = await apiClient.post<{ payment: any }, CreatePaymentInput>(
     "/payments",
@@ -112,7 +117,7 @@ export async function createPayment(
       amountPaid: data.amountPaid,
       debtAmount: data.debtAmount || null,
     },
-    { idempotencyKey }
+    { idempotencyKey, cookies }
   );
 
   if (!response.success) {
@@ -130,7 +135,8 @@ export async function updatePayment(
   id: string,
   data: UpdatePaymentInput,
   session: SessionUser,
-  idempotencyKey?: string
+  idempotencyKey?: string,
+  cookies?: string
 ): Promise<Payment> {
   if (session.role !== "ADMIN")
     throw new Error("Solo un Administrador puede modificar cobros");
@@ -142,7 +148,7 @@ export async function updatePayment(
       amountPaid: data.amountPaid !== undefined ? data.amountPaid : undefined,
       debtAmount: data.debtAmount !== undefined ? data.debtAmount || null : undefined,
     },
-    { idempotencyKey }
+    { idempotencyKey, cookies }
   );
 
   if (!response.success) {

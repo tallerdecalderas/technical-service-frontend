@@ -19,15 +19,14 @@ export type UpdateInventoryItemInput = z.infer<typeof updateInventoryItemSchema>
 
 export async function listInventoryItems(
     filters: InventoryItemFilters,
-    session?: SessionUser,
-): Promise<InventoryItem[]> {
+    session?: SessionUser,    cookies?: string,): Promise<InventoryItem[]> {
     const params: Record<string, string> = {};
 
     if (filters.companyId) params.companyId = filters.companyId;
     if (filters.isActive !== undefined) params.isActive = String(filters.isActive);
     if (filters.search) params.search = filters.search;
 
-    const response = await apiClient.get<{ items: any[] }>("/catalog/items", params);
+    const response = await apiClient.get<{ items: any[] }>("/catalog/items", params, cookies);
 
     if (!response.success) {
         throw new Error(response.error?.message || "Error al listar ítems de inventario");
@@ -53,9 +52,8 @@ export async function listInventoryItems(
 
 export async function getInventoryItemById(
     id: string,
-    session?: SessionUser,
-): Promise<InventoryItem | null> {
-    const response = await apiClient.get<{ item: any }>(`/catalog/items/${id}`);
+    session?: SessionUser,    cookies?: string,): Promise<InventoryItem | null> {
+    const response = await apiClient.get<{ item: any }>(`/catalog/items/${id}`, cookies);
 
     if (!response.success) {
         if (response.error?.code === "NOT_FOUND") return null;
@@ -84,7 +82,8 @@ export async function getInventoryItemById(
 export async function createInventoryItem(
     data: CreateInventoryItemInput,
     session: SessionUser,
-    idempotencyKey?: string
+    idempotencyKey?: string,
+    cookies?: string,
 ): Promise<InventoryItem> {
     if (session.role !== "ADMIN")
         throw new Error("Solo un Administrador puede crear ítems de inventario");
@@ -104,7 +103,7 @@ export async function createInventoryItem(
             marginPercent: data.marginPercent || 0,
             isActive: true,
         },
-        { idempotencyKey }
+        { idempotencyKey, cookies }
     );
 
     if (!response.success) {
@@ -134,7 +133,8 @@ export async function updateInventoryItem(
     id: string,
     data: UpdateInventoryItemInput,
     session: SessionUser,
-    idempotencyKey?: string
+    idempotencyKey?: string,
+    cookies?: string,
 ): Promise<InventoryItem> {
     if (session.role !== "ADMIN")
         throw new Error(
@@ -155,7 +155,7 @@ export async function updateInventoryItem(
             marginPercent: data.marginPercent,
             isActive: data.isActive,
         },
-        { idempotencyKey }
+        { idempotencyKey, cookies }
     );
 
     if (!response.success) {

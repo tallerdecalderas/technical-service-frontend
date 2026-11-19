@@ -1,6 +1,8 @@
-import { db } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { getServerCookies } from "@/lib/api-client-server";
+import { listClients } from "@/lib/services/client.service";
+import { listTechnicians } from "@/lib/services/technician.service";
 import { ServiceForm } from "@/components/services/service-form";
 
 export default async function NewServicePage() {
@@ -9,8 +11,13 @@ export default async function NewServicePage() {
     redirect("/login");
   }
 
-  const clients = await db.orm.public.Client.orderBy((c: any) => c.createdAt.desc()).all();
-  const technicians = await db.orm.public.User.where({ role: "TECHNICIAN" }).all();
+  const cookies = await getServerCookies();
+  const [clientsResult, technicians] = await Promise.all([
+    listClients(undefined, undefined, cookies),
+    listTechnicians(cookies),
+  ]);
+
+  const clients = clientsResult.clients;
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">

@@ -1,6 +1,10 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { db } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
+import { getServerCookies } from "@/lib/api-client-server";
+import { getTechnicianById } from "@/lib/services/technician.service";
+import { listServices } from "@/lib/services/service.service";
+import { listPayments } from "@/lib/services/payment.service";
 import {
   Card,
   CardContent,
@@ -35,24 +39,18 @@ export default async function AdminTechnicianPage({
   params,
 }: TechnicianPageProps) {
   const { id } = await params;
-  const technician = await db.orm.public.User.first({ id });
+  const session = await getSession();
+  const cookies = await getServerCookies();
+  const technician = await getTechnicianById(id, cookies);
 
   if (!technician || technician.role !== "TECHNICIAN") {
     notFound();
   }
 
-  const services = await db.orm.public.Service
-    .where({ technicianId: id })
-    .include("technician", (t: any) => t)
-    .include("client", (c: any) => c)
-    .include("createdBy", (u: any) => u)
-    .include("payment", (p: any) => p)
-    .orderBy((s: any) => s.scheduledDate.desc())
-    .all();
-    
-  const payments = await db.orm.public.Payment
-    .where({ technicianId: id })
-    .all();
+  const [services, payments] = await Promise.all([
+    listServices({ technicianId: id }, session, cookies),
+    listPayments({ technicianId: id }, session, cookies),
+  ]);
 
   const stats = {
     totalServices: services.length,

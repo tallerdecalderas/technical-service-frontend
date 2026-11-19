@@ -38,6 +38,7 @@ import {
   Plus,
 } from "lucide-react";
 import type { Client, Service } from "@/types";
+import { apiClient } from "@/lib/api-client";
 
 interface ClientDetailProps {
   client: Client;
@@ -65,13 +66,9 @@ export function ClientDetail({ client, services, stats }: ClientDetailProps) {
   async function handleSave() {
     setLoading(true);
     try {
-      const res = await fetch(`/api/clients/${client.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
+      const response = await apiClient.patch<{ client: Client }, typeof formData>(`/clients/${client.id}`, formData);
 
-      if (!res.ok) throw new Error("Error al guardar");
+      if (!response.success) throw new Error(response.error?.message || "Error al guardar");
 
       toast.success("Cliente actualizado");
       setEditing(false);

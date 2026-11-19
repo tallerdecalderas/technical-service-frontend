@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
-import { db } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import { getServerCookies } from "@/lib/api-client-server";
+import { getServiceById } from "@/lib/services/service.service";
+import { listTechnicians } from "@/lib/services/technician.service";
 import { AdminServiceDetail } from "@/components/services/admin-service-detail";
-import { serialize } from "@/lib/utils";
 
 interface ServicePageProps {
   params: Promise<{ id: string }>;
@@ -16,26 +17,21 @@ export default async function AdminServicePage({ params }: ServicePageProps) {
   }
 
   const { id } = await params;
-  const service = await db.orm.public.Service
-    .include("technician", (t: any) => t)
-    .include("client", (c: any) => c)
-    .include("createdBy", (u: any) => u)
-    .include("payment", (p: any) => p)
-    .first({ id });
+  const cookies = await getServerCookies();
+  const [service, technicians] = await Promise.all([
+    getServiceById(id, session, cookies),
+    listTechnicians(cookies),
+  ]);
 
   if (!service) {
     notFound();
   }
 
-  const technicians = await db.orm.public.User
-    .where({ role: "TECHNICIAN" })
-    .all();
-
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <AdminServiceDetail
-        service={serialize(service as any)}
-        technicians={serialize(technicians.filter((t: any) => t.isActive) as any)}
+        service={service as any}
+        technicians={technicians.filter((t: any) => t.isActive) as any}
       />
     </div>
   );

@@ -1,32 +1,16 @@
-import { db } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
+import { getServerCookies } from "@/lib/api-client-server";
+import { listServices } from "@/lib/services/service.service";
+import { listTechnicians } from "@/lib/services/technician.service";
 import { ScheduleCalendar } from "@/components/schedule/schedule-calendar";
 
 export default async function AdminSchedulePage() {
-  const rawServices = await db.orm.public.Service
-    .include("technician", (t: any) => t)
-    .include("client", (c: any) => c)
-    .include("createdBy", (u: any) => u)
-    .include("payment", (p: any) => p)
-    .orderBy((s: any) => s.scheduledDate.desc())
-    .all();
-
-  const services = rawServices.map((service: any) => ({
-    ...service,
-    expectedAmount: service.expectedAmount
-      ? Number(service.expectedAmount)
-      : null,
-    payment: service.payment
-      ? {
-          ...service.payment,
-          amountPaid: Number(service.payment.amountPaid),
-          sparePartsCost: Number(service.payment.sparePartsCost),
-          debtAmount: Number(service.payment.debtAmount),
-        }
-      : null,
-  }));
-  const technicians = await db.orm.public.User
-    .where({ role: "TECHNICIAN" })
-    .all();
+  const session = await getSession();
+  const cookies = await getServerCookies();
+  const [services, technicians] = await Promise.all([
+    listServices({}, session, cookies),
+    listTechnicians(cookies),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -37,7 +21,7 @@ export default async function AdminSchedulePage() {
 
       <ScheduleCalendar
         services={services as any}
-        technicians={technicians.filter((t) => t.isActive)}
+        technicians={technicians.filter((t: any) => t.isActive)}
       />
     </div>
   );

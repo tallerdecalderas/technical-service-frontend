@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import type { Client } from "@/types";
+import { apiClient } from "@/lib/api-client";
 
 interface ClientFormProps {
   initialData?: Client | null;
@@ -35,20 +36,15 @@ export function ClientForm({ initialData }: ClientFormProps) {
     setLoading(true);
 
     try {
-      const url = isEditing
-        ? `/api/clients/${initialData?.id}`
-        : "/api/clients";
-      const method = isEditing ? "PUT" : "POST";
+      const isEditing = !!initialData;
+      const path = isEditing ? `/clients/${initialData?.id}` : "/clients";
 
-      const res = await fetch(url, {
-        method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Error al guardar");
+      if (isEditing) {
+        const response = await apiClient.patch<{ client: Client }, typeof formData>(path, formData);
+        if (!response.success) throw new Error(response.error?.message || "Error al guardar");
+      } else {
+        const response = await apiClient.post<{ client: Client }, typeof formData>(path, formData);
+        if (!response.success) throw new Error(response.error?.message || "Error al guardar");
       }
 
       toast.success(isEditing ? "Cliente actualizado" : "Cliente creado");

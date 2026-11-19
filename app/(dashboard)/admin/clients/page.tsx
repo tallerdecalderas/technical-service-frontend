@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { db } from "@/lib/prisma";
+import { getServerCookies } from "@/lib/api-client-server";
+import { listClients } from "@/lib/services/client.service";
 import { Button } from "@/components/ui/button";
 import { ClientsTable } from "@/components/clients/clients-table";
 import { Plus } from "lucide-react";
@@ -8,7 +9,8 @@ import { Plus } from "lucide-react";
 export const revalidate = 60;
 
 export default async function AdminClientsPage() {
-  const clients = await db.orm.public.Client.orderBy((c: any) => c.createdAt.desc()).all();
+  const cookies = await getServerCookies();
+  const { clients } = await listClients(undefined, undefined, cookies);
 
   return (
     <div className="space-y-6">
