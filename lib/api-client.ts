@@ -1,5 +1,3 @@
-"use client";
-
 import type { SessionUser } from "@/types";
 
 /* ─── Configuración ──────────────────────────────────────────────────────── */
@@ -33,6 +31,7 @@ export interface ApiError {
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;
+  meta?: PaginationMeta;
   error?: ApiError;
   message?: string;
 }
@@ -136,9 +135,19 @@ class ApiClient {
       };
     }
 
+    const meta = data.meta
+      ? {
+          ...data.meta,
+          totalPages:
+            data.meta.totalPages ??
+            Math.ceil(data.meta.total / Math.max(data.meta.pageSize, 1)),
+        }
+      : undefined;
+
     return {
       success: true,
       data: data.data,
+      meta,
       message: data.message,
     } as ApiResponse<T>;
   }

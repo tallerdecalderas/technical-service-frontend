@@ -1,5 +1,7 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { Temporal } from "temporal-polyfill";
+import type { Temporal as TemporalTypes } from "temporal-polyfill";
 import type { ServiceStatus, PaymentMethod } from "@/types";
 
 export function cn(...inputs: ClassValue[]) {
@@ -11,38 +13,38 @@ export function cn(...inputs: ClassValue[]) {
 // Estos helpers centralizan la conversión para no importar Temporal en cada archivo.
 
 /** Convierte Date o string ISO a Temporal.Instant (lo que Prisma 8 espera para timestamptz) */
-export function toInstant(date: Date | string): Temporal.Instant {
+export function toInstant(date: Date | string): TemporalTypes.Instant {
   const d = typeof date === "string" ? new Date(date) : date;
   return Temporal.Instant.fromEpochMilliseconds(d.getTime());
 }
 
 /** Temporal.Instant de "ahora" */
-export function nowInstant(): Temporal.Instant {
+export function nowInstant(): TemporalTypes.Instant {
   return Temporal.Now.instant();
 }
 
 /** Inicio del día como Temporal.Instant */
-export function startOfDayInstant(date?: Date): Temporal.Instant {
+export function startOfDayInstant(date?: Date): TemporalTypes.Instant {
   const d = new Date(date ?? Date.now());
   d.setHours(0, 0, 0, 0);
   return Temporal.Instant.fromEpochMilliseconds(d.getTime());
 }
 
 /** Fin del día como Temporal.Instant */
-export function endOfDayInstant(date?: Date): Temporal.Instant {
+export function endOfDayInstant(date?: Date): TemporalTypes.Instant {
   const d = new Date(date ?? Date.now());
   d.setHours(23, 59, 59, 999);
   return Temporal.Instant.fromEpochMilliseconds(d.getTime());
 }
 
 /** Primer día del mes como Temporal.Instant */
-export function startOfMonthInstant(date?: Date): Temporal.Instant {
+export function startOfMonthInstant(date?: Date): TemporalTypes.Instant {
   const d = date ?? new Date();
   return toInstant(new Date(d.getFullYear(), d.getMonth(), 1));
 }
 
 /** Último día del mes como Temporal.Instant */
-export function endOfMonthInstant(date?: Date): Temporal.Instant {
+export function endOfMonthInstant(date?: Date): TemporalTypes.Instant {
   const d = date ?? new Date();
   const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
   end.setHours(23, 59, 59, 999);
@@ -50,7 +52,7 @@ export function endOfMonthInstant(date?: Date): Temporal.Instant {
 }
 
 /** Convierte Temporal.Instant / string / Date a Date JS (para formatear en UI) */
-export function toDate(value: Temporal.Instant | string | Date): Date {
+export function toDate(value: TemporalTypes.Instant | string | Date): Date {
   if (value instanceof Date) return value;
   if (typeof value === "string") return new Date(value);
   return new Date(value.epochMilliseconds);
@@ -81,7 +83,7 @@ export function formatCurrency(
   }).format(numAmount);
 }
 
-export function formatDate(date: Date | string | Temporal.Instant): string {
+export function formatDate(date: Date | string | TemporalTypes.Instant): string {
   const d = toDate(date);
   return new Intl.DateTimeFormat("es-CL", {
     day: "2-digit",
@@ -90,7 +92,7 @@ export function formatDate(date: Date | string | Temporal.Instant): string {
   }).format(d);
 }
 
-export function formatDateTime(date: Date | string | Temporal.Instant): string {
+export function formatDateTime(date: Date | string | TemporalTypes.Instant): string {
   const d = toDate(date);
   return new Intl.DateTimeFormat("es-CL", {
     day: "2-digit",
@@ -101,7 +103,7 @@ export function formatDateTime(date: Date | string | Temporal.Instant): string {
   }).format(d);
 }
 
-export function formatTime(time: string | Date | Temporal.Instant): string {
+export function formatTime(time: string | Date | TemporalTypes.Instant): string {
   if (typeof time === "string" && /^\d{1,2}:\d{2}/.test(time)) {
     const [hours, minutes] = time.split(":");
     const hour = Number.parseInt(hours);
@@ -149,20 +151,20 @@ export function getPaymentMethodLabel(method: PaymentMethod): string {
   return labels[method];
 }
 
-export function isToday(date: Date | string | Temporal.Instant): boolean {
+export function isToday(date: Date | string | TemporalTypes.Instant): boolean {
   const d = toDate(date);
   const today = new Date();
   return d.toDateString() === today.toDateString();
 }
 
-export function isTomorrow(date: Date | string | Temporal.Instant): boolean {
+export function isTomorrow(date: Date | string | TemporalTypes.Instant): boolean {
   const d = toDate(date);
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   return d.toDateString() === tomorrow.toDateString();
 }
 
-export function getRelativeDay(date: Date | string | Temporal.Instant): string {
+export function getRelativeDay(date: Date | string | TemporalTypes.Instant): string {
   if (isToday(date)) return "Hoy";
   if (isTomorrow(date)) return "Mañana";
   return formatDate(date);

@@ -1,11 +1,13 @@
 import { getSession } from "@/lib/auth";
 import { getServerCookies } from "@/lib/api-client-server";
+import { redirect } from "next/navigation";
 import { DashboardStats } from "@/components/dashboard/dashboard-stats";
 import { TodayServices } from "@/components/dashboard/today-services";
 import { listServices } from "@/lib/services/service.service";
 import { listTechnicians } from "@/lib/services/technician.service";
 import { listClients } from "@/lib/services/client.service";
 import {
+  toDate,
   startOfDayInstant,
   endOfDayInstant,
   startOfMonthInstant,
@@ -18,11 +20,12 @@ export const revalidate = 60;
 
 async function getDashboardData() {
   const session = await getSession();
+  if (!session) redirect("/login");
   const cookies = await getServerCookies();
-  const startOfDay = startOfDayInstant();
-  const endOfDay = endOfDayInstant();
-  const startOfMonth = startOfMonthInstant();
-  const endOfMonth = endOfMonthInstant();
+  const startOfDay = toDate(startOfDayInstant());
+  const endOfDay = toDate(endOfDayInstant());
+  const startOfMonth = toDate(startOfMonthInstant());
+  const endOfMonth = toDate(endOfMonthInstant());
 
   // Fetch all data in parallel
   const [allServices, technicians, clientsResult] = await Promise.all([
@@ -42,7 +45,10 @@ async function getDashboardData() {
       pendingServices: allServices.filter((s) => s.status === "PENDING").length,
       inProgressServices: allServices.filter((s) => s.status === "IN_PROGRESS").length,
       completedThisMonth: allServices.filter(
-        (s) => s.status === "COMPLETED" && new Date(s.scheduledDate) >= startOfMonth && new Date(s.scheduledDate) <= endOfMonth
+        (s) => {
+          const scheduledDate = new Date(s.scheduledDate);
+          return s.status === "COMPLETED" && scheduledDate >= startOfMonth && scheduledDate <= endOfMonth;
+        }
       ).length,
       activeTechnicians: technicians.filter((t) => t.isActive).length,
       totalClients: clientsResult.total,

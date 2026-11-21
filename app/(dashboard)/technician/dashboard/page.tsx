@@ -4,7 +4,7 @@ import { getServerCookies } from "@/lib/api-client-server";
 import { listServices } from "@/lib/services/service.service";
 import { TechnicianAgenda } from "@/components/technician/technician-agenda";
 import { TechnicianStats } from "@/components/technician/technician-stats";
-import { startOfDayInstant } from "@/lib/utils";
+import { serialize, startOfDayInstant, toDate } from "@/lib/utils";
 
 export default async function TechnicianDashboardPage() {
   const session = await getSession();
@@ -14,7 +14,7 @@ export default async function TechnicianDashboardPage() {
   }
 
   const cookies = await getServerCookies();
-  const startOfDay = startOfDayInstant();
+  const startOfDay = toDate(startOfDayInstant());
 
   const todayServices = await listServices(
     { technicianId: session.id, status: undefined },

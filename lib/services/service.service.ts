@@ -15,6 +15,7 @@ import {
   adaptServiceDetail,
   adaptServiceList,
 } from "@/lib/adapters/service.adapter";
+import type { ServiceDto } from "@/lib/dto/service.dto";
 import type { Service, ServiceFilters, SessionUser } from "@/types";
 import type { z } from "zod";
 import type {
@@ -49,16 +50,13 @@ export async function listServices(
   if (filters.dateFrom) params.dateFrom = filters.dateFrom;
   if (filters.dateTo) params.dateTo = filters.dateTo;
 
-  const response = await apiClient.get<{
-    services: any[];
-    meta: { page: number; pageSize: number; total: number; totalPages: number };
-  }>("/services", params, cookies);
+  const response = await apiClient.get<ServiceDto[]>("/services", params, cookies);
 
-  if (!response.success) {
+  if (!response.success || !response.data || !response.meta) {
     throw new Error(response.error?.message || "Error al listar servicios");
   }
 
-  const adapted = adaptServiceList(response as any);
+  const adapted = adaptServiceList({ services: response.data, meta: response.meta });
   return adapted.services;
 }
 

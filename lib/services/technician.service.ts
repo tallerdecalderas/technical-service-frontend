@@ -12,6 +12,7 @@ import {
   adaptTechnicianDetail,
   adaptTechnicianList,
 } from "@/lib/adapters/technician.adapter";
+import type { TechnicianDto } from "@/lib/dto/technician.dto";
 import type { User, SessionUser } from "@/types";
 import type {
   createTechnicianSchema,
@@ -26,30 +27,24 @@ export type UpdateTechnicianInput = Parameters<
 >[0];
 
 export async function listTechnicians(cookies?: string): Promise<User[]> {
-  const response = await apiClient.get<{
-    technicians: any[];
-    meta: { page: number; pageSize: number; total: number; totalPages: number };
-  }>("/technicians", cookies);
+  const response = await apiClient.get<TechnicianDto[]>("/technicians", cookies);
 
-  if (!response.success) {
+  if (!response.success || !response.data || !response.meta) {
     throw new Error(response.error?.message || "Error al listar técnicos");
   }
 
-  const adapted = adaptTechnicianList(response as any);
+  const adapted = adaptTechnicianList({ technicians: response.data, meta: response.meta });
   return adapted.technicians;
 }
 
 export async function listUsers(cookies?: string): Promise<User[]> {
-  const response = await apiClient.get<{
-    technicians: any[];
-    meta: { page: number; pageSize: number; total: number; totalPages: number };
-  }>("/technicians", cookies);
+  const response = await apiClient.get<TechnicianDto[]>("/technicians", cookies);
 
-  if (!response.success) {
+  if (!response.success || !response.data || !response.meta) {
     throw new Error(response.error?.message || "Error al listar usuarios");
   }
 
-  const adapted = adaptTechnicianList(response as any);
+  const adapted = adaptTechnicianList({ technicians: response.data, meta: response.meta });
   return adapted.technicians;
 }
 

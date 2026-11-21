@@ -10,6 +10,7 @@ import {
   adaptClientDetail,
   adaptClientList,
 } from "@/lib/adapters/client.adapter";
+import type { ClientDto } from "@/lib/dto/client.dto";
 import type { Client, SessionUser } from "@/types";
 import type {
   createClientSchema,
@@ -29,20 +30,17 @@ export async function listClients(
   session?: SessionUser,
   cookies?: string
 ): Promise<{ clients: Client[]; page: number; pageSize: number; total: number; totalPages: number }> {
-  const response = await apiClient.get<{
-    clients: any[];
-    meta: { page: number; pageSize: number; total: number; totalPages: number };
-  }>("/clients", {
+  const response = await apiClient.get<ClientDto[]>("/clients", {
     page: params?.page ?? 1,
     pageSize: params?.pageSize ?? 20,
     search: params?.search ?? "",
   }, cookies);
 
-  if (!response.success) {
+  if (!response.success || !response.data || !response.meta) {
     throw new Error(response.error?.message || "Error al listar clientes");
   }
 
-  const adapted = adaptClientList(response as any);
+  const adapted = adaptClientList({ clients: response.data, meta: response.meta });
   return {
     clients: adapted.clients,
     page: adapted.meta.page,
