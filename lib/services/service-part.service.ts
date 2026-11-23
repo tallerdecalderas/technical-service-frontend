@@ -8,7 +8,7 @@
  * - name, unitCost, unitSalePrice
  */
 
-import { apiClient } from "@/lib/api-client";
+import { apiClient, unwrapData } from "@/lib/api-client";
 import type { ServicePart, SessionUser } from "@/types";
 import type { z } from "zod";
 import type {
@@ -19,18 +19,29 @@ import type {
 export type AddServicePartInput = z.infer<typeof addServicePartSchema>;
 export type UpdateServicePartInput = z.infer<typeof updateServicePartSchema>;
 
+interface ServicePartDto {
+    id: string;
+    serviceId: string;
+    inventoryItemId: string | null;
+    name: string;
+    nota: string | null;
+    quantity: number;
+    unitCost: number;
+    totalCost: number;
+    unitSalePrice: number;
+    totalSalePrice: number;
+    createdAt: string;
+}
+
 export async function listServiceParts(
     serviceId: string,    cookies?: string,): Promise<ServicePart[]> {
-    const response = await apiClient.get<{ parts: any[] }>(
+    const response = await apiClient.get<ServicePartDto[]>(
         `/services/${serviceId}/parts`,
         cookies
     );
+    const parts = unwrapData(response);
 
-    if (!response.success) {
-        throw new Error(response.error?.message || "Error al listar repuestos");
-    }
-
-    return (response.data?.parts || []).map((p: any) => ({
+    return parts.map((p) => ({
         id: p.id,
         serviceId: p.serviceId,
         inventoryItemId: p.inventoryItemId || null,
@@ -52,7 +63,7 @@ export async function addServicePart(
     idempotencyKey?: string,
     cookies?: string,
 ): Promise<ServicePart> {
-    const response = await apiClient.post<{ part: any }, AddServicePartInput>(
+    const response = await apiClient.post<ServicePartDto, AddServicePartInput>(
         `/services/${serviceId}/parts`,
         {
             inventoryItemId: data.inventoryItemId || null,
@@ -65,11 +76,7 @@ export async function addServicePart(
         { idempotencyKey, cookies }
     );
 
-    if (!response.success) {
-        throw new Error(response.error?.message || "Error al agregar repuesto");
-    }
-
-    const p = response.data.part;
+    const p = unwrapData(response);
     return {
         id: p.id,
         serviceId: p.serviceId,
@@ -92,7 +99,7 @@ export async function updateServicePart(
     idempotencyKey?: string,
     cookies?: string,
 ): Promise<ServicePart> {
-    const response = await apiClient.patch<{ part: any }, UpdateServicePartInput>(
+    const response = await apiClient.patch<ServicePartDto, UpdateServicePartInput>(
         `/services/parts/${partId}`,
         {
             quantity: data.quantity,
@@ -104,11 +111,7 @@ export async function updateServicePart(
         { idempotencyKey, cookies }
     );
 
-    if (!response.success) {
-        throw new Error(response.error?.message || "Error al actualizar repuesto");
-    }
-
-    const p = response.data.part;
+    const p = unwrapData(response);
     return {
         id: p.id,
         serviceId: p.serviceId,

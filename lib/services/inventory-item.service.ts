@@ -6,7 +6,7 @@
  * Catálogo de repuestos perteneciente a cada empresa.
  */
 
-import { apiClient } from "@/lib/api-client";
+import { apiClient, unwrapData, unwrapList } from "@/lib/api-client";
 import type { InventoryItem, InventoryItemFilters, SessionUser } from "@/types";
 import type { z } from "zod";
 import type {
@@ -17,6 +17,23 @@ import type {
 export type CreateInventoryItemInput = z.infer<typeof createInventoryItemSchema>;
 export type UpdateInventoryItemInput = z.infer<typeof updateInventoryItemSchema>;
 
+interface InventoryItemDto {
+    id: string;
+    companyId: string;
+    code: string;
+    name: string;
+    unit: string | null;
+    stock: number;
+    costInitList: number;
+    costPrice: number;
+    sellPrice: number;
+    techPrice: number;
+    marginPercent: number;
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+}
+
 export async function listInventoryItems(
     filters: InventoryItemFilters,
     session?: SessionUser,    cookies?: string,): Promise<InventoryItem[]> {
@@ -26,13 +43,10 @@ export async function listInventoryItems(
     if (filters.isActive !== undefined) params.isActive = String(filters.isActive);
     if (filters.search) params.search = filters.search;
 
-    const response = await apiClient.get<{ items: any[] }>("/catalog/items", params, cookies);
+    const response = await apiClient.get<InventoryItemDto[]>("/catalog/items", params, cookies);
+    const { data } = unwrapList(response);
 
-    if (!response.success) {
-        throw new Error(response.error?.message || "Error al listar ítems de inventario");
-    }
-
-    return (response.data?.items || []).map((i: any) => ({
+    return data.map((i) => ({
         id: i.id,
         companyId: i.companyId,
         code: i.code,
@@ -53,14 +67,8 @@ export async function listInventoryItems(
 export async function getInventoryItemById(
     id: string,
     session?: SessionUser,    cookies?: string,): Promise<InventoryItem | null> {
-    const response = await apiClient.get<{ item: any }>(`/catalog/items/${id}`, cookies);
-
-    if (!response.success) {
-        if (response.error?.code === "NOT_FOUND") return null;
-        throw new Error(response.error?.message || "Error al obtener ítem de inventario");
-    }
-
-    const i = response.data.item;
+    const response = await apiClient.get<InventoryItemDto>(`/catalog/items/${id}`, cookies);
+    const i = unwrapData(response);
     return {
         id: i.id,
         companyId: i.companyId,
@@ -88,7 +96,7 @@ export async function createInventoryItem(
     if (session.role !== "ADMIN")
         throw new Error("Solo un Administrador puede crear ítems de inventario");
 
-    const response = await apiClient.post<{ item: any }, CreateInventoryItemInput>(
+    const response = await apiClient.post<InventoryItemDto, CreateInventoryItemInput>(
         "/catalog/items",
         {
             companyId: data.companyId,
@@ -106,11 +114,7 @@ export async function createInventoryItem(
         { idempotencyKey, cookies }
     );
 
-    if (!response.success) {
-        throw new Error(response.error?.message || "Error al crear ítem de inventario");
-    }
-
-    const i = response.data.item;
+    const i = unwrapData(response);
     return {
         id: i.id,
         companyId: i.companyId,
@@ -141,7 +145,7 @@ export async function updateInventoryItem(
             "Solo un Administrador puede modificar ítems de inventario",
         );
 
-    const response = await apiClient.patch<{ item: any }, UpdateInventoryItemInput>(
+    const response = await apiClient.patch<InventoryItemDto, UpdateInventoryItemInput>(
         `/catalog/items/${id}`,
         {
             name: data.name,
@@ -158,11 +162,7 @@ export async function updateInventoryItem(
         { idempotencyKey, cookies }
     );
 
-    if (!response.success) {
-        throw new Error(response.error?.message || "Error al actualizar ítem de inventario");
-    }
-
-    const i = response.data.item;
+    const i = unwrapData(response);
     return {
         id: i.id,
         companyId: i.companyId,

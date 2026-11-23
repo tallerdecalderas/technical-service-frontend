@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 import { getSession } from "@/lib/auth"
 import { getServerCookies } from "@/lib/api-client-server"
 import { getEstimateById } from "@/lib/services/estimate.service"
@@ -13,6 +13,7 @@ interface EstimatePageProps {
 export default async function AdminEstimatePage({ params }: EstimatePageProps) {
   const { id } = await params
   const session = await getSession();
+  if (!session) redirect("/login");
   const cookies = await getServerCookies();
 
   const estimate = await getEstimateById(id, session, cookies)

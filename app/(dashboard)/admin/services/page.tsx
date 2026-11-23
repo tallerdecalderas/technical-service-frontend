@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { getServerCookies } from "@/lib/api-client-server";
 import { listServices } from "@/lib/services/service.service";
@@ -12,6 +13,7 @@ export const revalidate = 30;
 
 export default async function AdminServicesPage() {
   const session = await getSession();
+  if (!session) redirect("/login");
   const cookies = await getServerCookies();
   const [services, technicians] = await Promise.all([
     listServices({}, session, cookies),

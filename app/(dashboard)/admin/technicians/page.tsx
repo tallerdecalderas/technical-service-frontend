@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth";
 import { getServerCookies } from "@/lib/api-client-server";
 import {
@@ -19,6 +20,7 @@ import type { User } from "@/types";
 
 export default async function AdminTechniciansPage() {
   const session = await getSession();
+  if (!session) redirect("/login");
   const cookies = await getServerCookies();
   const [technicians, payments] = await Promise.all([
     listTechnicians(cookies),

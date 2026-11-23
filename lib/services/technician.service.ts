@@ -6,10 +6,9 @@
  * La creación de técnicos se hace a través de Supabase Auth (gestión por el backend Go).
  */
 
-import { apiClient } from "@/lib/api-client";
+import { apiClient, unwrapData, unwrapList } from "@/lib/api-client";
 import {
   adaptTechnician,
-  adaptTechnicianDetail,
   adaptTechnicianList,
 } from "@/lib/adapters/technician.adapter";
 import type { TechnicianDto } from "@/lib/dto/technician.dto";
@@ -29,22 +28,16 @@ export type UpdateTechnicianInput = Parameters<
 export async function listTechnicians(cookies?: string): Promise<User[]> {
   const response = await apiClient.get<TechnicianDto[]>("/technicians", cookies);
 
-  if (!response.success || !response.data || !response.meta) {
-    throw new Error(response.error?.message || "Error al listar técnicos");
-  }
-
-  const adapted = adaptTechnicianList({ technicians: response.data, meta: response.meta });
+  const { data, meta } = unwrapList(response);
+  const adapted = adaptTechnicianList({ technicians: data, meta });
   return adapted.technicians;
 }
 
 export async function listUsers(cookies?: string): Promise<User[]> {
   const response = await apiClient.get<TechnicianDto[]>("/technicians", cookies);
 
-  if (!response.success || !response.data || !response.meta) {
-    throw new Error(response.error?.message || "Error al listar usuarios");
-  }
-
-  const adapted = adaptTechnicianList({ technicians: response.data, meta: response.meta });
+  const { data, meta } = unwrapList(response);
+  const adapted = adaptTechnicianList({ technicians: data, meta });
   return adapted.technicians;
 }
 
@@ -52,17 +45,11 @@ export async function getTechnicianById(
   id: string,
   cookies?: string,
 ): Promise<User | null> {
-  const response = await apiClient.get<{ technician: any }>(
+  const response = await apiClient.get<TechnicianDto>(
     `/technicians/${id}`,
     cookies,
   );
-
-  if (!response.success) {
-    if (response.error?.code === "NOT_FOUND") return null;
-    throw new Error(response.error?.message || "Error al obtener técnico");
-  }
-
-  return adaptTechnicianDetail(response as any);
+  return adaptTechnician(unwrapData(response));
 }
 
 /** Crea un nuevo técnico (a través de Supabase Auth + backend Go). */
@@ -71,7 +58,7 @@ export async function createTechnician(
   idempotencyKey?: string,
   cookies?: string
 ): Promise<User> {
-  const response = await apiClient.post<{ technician: any }, CreateTechnicianInput>(
+  const response = await apiClient.post<TechnicianDto, CreateTechnicianInput>(
     "/technicians",
     {
       name: data.name,
@@ -82,11 +69,7 @@ export async function createTechnician(
     { idempotencyKey, cookies }
   );
 
-  if (!response.success) {
-    throw new Error(response.error?.message || "Error al crear técnico");
-  }
-
-  return adaptTechnician(response.data.technician);
+  return adaptTechnician(unwrapData(response));
 }
 
 export async function updateTechnician(
@@ -95,7 +78,7 @@ export async function updateTechnician(
   idempotencyKey?: string,
   cookies?: string
 ): Promise<User> {
-  const response = await apiClient.patch<{ technician: any }, UpdateTechnicianInput>(
+  const response = await apiClient.patch<TechnicianDto, UpdateTechnicianInput>(
     `/technicians/${id}`,
     {
       name: data.name,
@@ -107,11 +90,7 @@ export async function updateTechnician(
     { idempotencyKey, cookies }
   );
 
-  if (!response.success) {
-    throw new Error(response.error?.message || "Error al actualizar técnico");
-  }
-
-  return adaptTechnician(response.data.technician);
+  return adaptTechnician(unwrapData(response));
 }
 
 /**

@@ -9,14 +9,14 @@
  * - Máximo 1 presupuesto activo por orden.
  */
 
-import { apiClient } from "@/lib/api-client";
+import { apiClient, unwrapData, unwrapList } from "@/lib/api-client";
 import {
   adaptEstimate,
-  adaptEstimateDetail,
   adaptEstimateList,
 } from "@/lib/adapters/estimate.adapter";
 import type { Estimate, EstimateFilters, SessionUser } from "@/types";
 import type { z } from "zod";
+import type { EstimateDto } from "@/lib/dto/estimate.dto";
 import type { createEstimateSchema } from "@/lib/validations";
 
 export type CreateEstimateInput = z.infer<typeof createEstimateSchema>;
@@ -37,16 +37,9 @@ export async function listEstimates(
     params.status = filters.status;
   }
 
-  const response = await apiClient.get<{
-    estimates: any[];
-    meta: { page: number; pageSize: number; total: number; totalPages: number };
-  }>("/estimates", params, cookies);
-
-  if (!response.success) {
-    throw new Error(response.error?.message || "Error al listar presupuestos");
-  }
-
-  const adapted = adaptEstimateList(response as any);
+  const response = await apiClient.get<EstimateDto[]>("/estimates", params, cookies);
+  const { data, meta } = unwrapList(response);
+  const adapted = adaptEstimateList({ estimates: data, meta });
   return adapted.estimates;
 }
 
@@ -55,14 +48,14 @@ export async function getEstimateById(
   session: SessionUser,
   cookies?: string
 ): Promise<Estimate | null> {
-  const response = await apiClient.get<{ estimate: any }>(`/estimates/${id}`, cookies);
+  const response = await apiClient.get<EstimateDto>(`/estimates/${id}`, cookies);
 
   if (!response.success) {
     if (response.error?.code === "NOT_FOUND") return null;
     throw new Error(response.error?.message || "Error al obtener presupuesto");
   }
 
-  const estimate = adaptEstimateDetail(response as any);
+  const estimate = adaptEstimate(unwrapData(response));
 
   if (session.role === "TECHNICIAN" && estimate?.service?.technicianId !== session.id) {
     throw new Error("Sin permisos para ver este presupuesto");
@@ -75,18 +68,12 @@ export async function getEstimateByService(
   serviceId: string,
   cookies?: string
 ): Promise<Estimate | null> {
-  const response = await apiClient.get<{ estimate: any }>(
+  const response = await apiClient.get<EstimateDto[]>(
     `/estimates?serviceId=${serviceId}`,
     cookies,
   );
-
-  if (!response.success) {
-    if (response.error?.code === "NOT_FOUND") return null;
-    throw new Error(response.error?.message || "Error al obtener presupuesto por servicio");
-  }
-
-  if (!response.data) return null;
-  return adaptEstimate(response.data);
+  const { data } = unwrapList(response);
+  return data[0] ? adaptEstimate(data[0]) : null;
 }
 
 export async function createEstimate(
@@ -95,7 +82,7 @@ export async function createEstimate(
   idempotencyKey?: string,
   cookies?: string
 ): Promise<Estimate> {
-  const response = await apiClient.post<{ estimate: any }, CreateEstimateInput>(
+  const response = await apiClient.post<EstimateDto, CreateEstimateInput>(
     "/estimates",
     {
       serviceId: data.serviceId,
@@ -106,11 +93,7 @@ export async function createEstimate(
     { idempotencyKey, cookies }
   );
 
-  if (!response.success) {
-    throw new Error(response.error?.message || "Error al crear presupuesto");
-  }
-
-  return adaptEstimate(response.data.estimate);
+  return adaptEstimate(unwrapData(response));
 }
 
 export async function finalizeEstimate(
@@ -124,15 +107,11 @@ export async function finalizeEstimate(
       "Solo un Administrador puede finalizar presupuestos",
     );
 
-  const response = await apiClient.patch<{ estimate: any }>(
+  const response = await apiClient.patch<EstimateDto>(
     `/estimates/${id}`,
     { status: "FINALIZED" },
     { idempotencyKey, cookies }
   );
 
-  if (!response.success) {
-    throw new Error(response.error?.message || "Error al finalizar presupuesto");
-  }
-
-  return adaptEstimate(response.data.estimate);
+  return adaptEstimate(unwrapData(response));
 }

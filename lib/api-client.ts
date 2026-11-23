@@ -41,10 +41,37 @@ export interface PaginationMeta {
   pageSize: number;
   total: number;
   totalPages: number;
+  version?: string;
+  updatedAt?: string;
 }
 
 export interface PaginatedResponse<T> extends ApiResponse<T[]> {
   meta?: PaginationMeta;
+}
+
+export function unwrapData<T>(response: ApiResponse<T>): T {
+  if (!response.success) {
+    throw new Error(response.error?.message || "API request failed");
+  }
+  if (response.data === undefined) {
+    throw new Error("Missing data in API response");
+  }
+  return response.data;
+}
+
+export function unwrapList<T>(
+  response: ApiResponse<T[]>,
+): { data: T[]; meta: PaginationMeta } {
+  if (!response.success) {
+    throw new Error(response.error?.message || "API request failed");
+  }
+  if (response.data === undefined) {
+    throw new Error("Missing data in API response");
+  }
+  if (!response.meta) {
+    throw new Error("Missing meta in API response");
+  }
+  return { data: response.data, meta: response.meta };
 }
 
 export interface RequestOptions {

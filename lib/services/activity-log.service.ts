@@ -4,7 +4,7 @@
  * Documentación: docs/reglas-negocio.md, docs/ordenes.md
  * Ahora consume la API Go en lugar de Prisma.
  */
-import { apiClient } from "@/lib/api-client";
+import { apiClient, unwrapData } from "@/lib/api-client";
 import type { ActivityLog } from "@/types";
 
 export const ACTIONS = {
@@ -64,12 +64,11 @@ export async function getServiceHistory(
   cookies?: string,
 ): Promise<ActivityLog[]> {
   try {
-    const response = await apiClient.get<{ logs: ActivityLog[] }>(
+    const response = await apiClient.get<ActivityLog[]>(
       `/activity-logs?serviceId=${serviceId}`,
     cookies,
   );
-    if (!response.success) return [];
-    return (response.data?.logs || []) as ActivityLog[];
+    return unwrapData(response);
   } catch (err) {
     console.error("[ActivityLog] Error obteniendo historial:", err);
     return [];

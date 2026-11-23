@@ -4,7 +4,7 @@
  * Documentación: docs/reglas-negocio.md, docs/api.md
  */
 
-import { apiClient } from "@/lib/api-client";
+import { apiClient, unwrapData, unwrapList } from "@/lib/api-client";
 import {
   adaptClient,
   adaptClientDetail,
@@ -36,11 +36,8 @@ export async function listClients(
     search: params?.search ?? "",
   }, cookies);
 
-  if (!response.success || !response.data || !response.meta) {
-    throw new Error(response.error?.message || "Error al listar clientes");
-  }
-
-  const adapted = adaptClientList({ clients: response.data, meta: response.meta });
+  const { data, meta } = unwrapList(response);
+  const adapted = adaptClientList({ clients: data, meta });
   return {
     clients: adapted.clients,
     page: adapted.meta.page,
@@ -56,14 +53,8 @@ export async function getClientById(
   session?: SessionUser,
   cookies?: string
 ): Promise<Client | null> {
-  const response = await apiClient.get<{ client: any }>(`/clients/${id}`, cookies);
-
-  if (!response.success) {
-    if (response.error?.code === "NOT_FOUND") return null;
-    throw new Error(response.error?.message || "Error al obtener cliente");
-  }
-
-  return adaptClientDetail(response as any);
+  const response = await apiClient.get<ClientDto>(`/clients/${id}`, cookies);
+  return adaptClient(unwrapData(response));
 }
 
 /** Crea un nuevo cliente. */
@@ -73,7 +64,7 @@ export async function createClient(
   idempotencyKey?: string,
   cookies?: string
 ): Promise<Client> {
-  const response = await apiClient.post<{ client: any }, CreateClientInput>(
+  const response = await apiClient.post<ClientDto, CreateClientInput>(
     "/clients",
     {
       name: data.name,
@@ -85,11 +76,7 @@ export async function createClient(
     { idempotencyKey, cookies }
   );
 
-  if (!response.success) {
-    throw new Error(response.error?.message || "Error al crear cliente");
-  }
-
-  return adaptClient(response.data.client);
+  return adaptClient(unwrapData(response));
 }
 
 /** Actualiza un cliente existente. */
@@ -100,7 +87,7 @@ export async function updateClient(
   idempotencyKey?: string,
   cookies?: string
 ): Promise<Client> {
-  const response = await apiClient.patch<{ client: any }, UpdateClientInput>(
+  const response = await apiClient.patch<ClientDto, UpdateClientInput>(
     `/clients/${id}`,
     {
       name: data.name,
@@ -112,11 +99,7 @@ export async function updateClient(
     { idempotencyKey, cookies }
   );
 
-  if (!response.success) {
-    throw new Error(response.error?.message || "Error al actualizar cliente");
-  }
-
-  return adaptClient(response.data.client);
+  return adaptClient(unwrapData(response));
 }
 
 /**

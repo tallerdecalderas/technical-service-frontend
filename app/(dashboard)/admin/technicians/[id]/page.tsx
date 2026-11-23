@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { getSession } from "@/lib/auth";
 import { getServerCookies } from "@/lib/api-client-server";
@@ -40,6 +40,7 @@ export default async function AdminTechnicianPage({
 }: TechnicianPageProps) {
   const { id } = await params;
   const session = await getSession();
+  if (!session) redirect("/login");
   const cookies = await getServerCookies();
   const technician = await getTechnicianById(id, cookies);
 

@@ -3,9 +3,11 @@ import { getServerCookies } from "@/lib/api-client-server";
 import { listServices } from "@/lib/services/service.service";
 import { listTechnicians } from "@/lib/services/technician.service";
 import { ScheduleCalendar } from "@/components/schedule/schedule-calendar";
+import { redirect } from "next/navigation";
 
 export default async function AdminSchedulePage() {
   const session = await getSession();
+  if (!session) redirect("/login");
   const cookies = await getServerCookies();
   const [services, technicians] = await Promise.all([
     listServices({}, session, cookies),

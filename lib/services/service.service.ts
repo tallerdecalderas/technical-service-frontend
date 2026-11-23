@@ -9,7 +9,7 @@
  * - Cada cambio importante se registra en ActivityLog (manejo por el backend).
  */
 
-import { apiClient } from "@/lib/api-client";
+import { apiClient, unwrapData, unwrapList } from "@/lib/api-client";
 import {
   adaptService,
   adaptServiceDetail,
@@ -52,11 +52,8 @@ export async function listServices(
 
   const response = await apiClient.get<ServiceDto[]>("/services", params, cookies);
 
-  if (!response.success || !response.data || !response.meta) {
-    throw new Error(response.error?.message || "Error al listar servicios");
-  }
-
-  const adapted = adaptServiceList({ services: response.data, meta: response.meta });
+  const { data, meta } = unwrapList(response);
+  const adapted = adaptServiceList({ services: data, meta });
   return adapted.services;
 }
 
@@ -65,14 +62,8 @@ export async function getServiceById(
   session: SessionUser,
   cookies?: string
 ): Promise<Service | null> {
-  const response = await apiClient.get<{ service: any }>(`/services/${id}`, cookies);
-
-  if (!response.success) {
-    if (response.error?.code === "NOT_FOUND") return null;
-    throw new Error(response.error?.message || "Error al obtener servicio");
-  }
-
-  const service = adaptServiceDetail(response as any);
+  const response = await apiClient.get<ServiceDto>(`/services/${id}`, cookies);
+  const service = adaptService(unwrapData(response));
 
   // El backend ya aplica autorización, pero validamos por seguridad en el cliente
   if (session.role === "TECHNICIAN" && service?.technicianId !== session.id) {
@@ -91,7 +82,7 @@ export async function createService(
   if (session.role !== "ADMIN")
     throw new Error("Solo un Administrador puede crear órdenes");
 
-  const response = await apiClient.post<{ service: any }, CreateServiceInput>(
+  const response = await apiClient.post<ServiceDto, CreateServiceInput>(
     "/services",
     {
       companyId: data.companyId,
@@ -108,11 +99,7 @@ export async function createService(
     { idempotencyKey, cookies }
   );
 
-  if (!response.success) {
-    throw new Error(response.error?.message || "Error al crear servicio");
-  }
-
-  return adaptService(response.data.service);
+  return adaptService(unwrapData(response));
 }
 
 export async function updateService(
@@ -125,7 +112,7 @@ export async function updateService(
   if (session.role !== "ADMIN")
     throw new Error("Solo un Administrador puede modificar órdenes");
 
-  const response = await apiClient.patch<{ service: any }, UpdateServiceInput>(
+  const response = await apiClient.patch<ServiceDto, UpdateServiceInput>(
     `/services/${id}`,
     {
       companyId: data.companyId,
@@ -142,11 +129,7 @@ export async function updateService(
     { idempotencyKey, cookies }
   );
 
-  if (!response.success) {
-    throw new Error(response.error?.message || "Error al actualizar servicio");
-  }
-
-  return adaptService(response.data.service);
+  return adaptService(unwrapData(response));
 }
 
 export async function updateServiceStatus(
@@ -156,17 +139,13 @@ export async function updateServiceStatus(
   idempotencyKey?: string,
   cookies?: string
 ): Promise<Service> {
-  const response = await apiClient.post<{ service: any }, UpdateStatusInput>(
+  const response = await apiClient.post<ServiceDto, UpdateStatusInput>(
     `/services/${id}/status`,
     { status: data.status },
     { idempotencyKey, cookies }
   );
 
-  if (!response.success) {
-    throw new Error(response.error?.message || "Error al actualizar estado");
-  }
-
-  return adaptService(response.data.service);
+  return adaptService(unwrapData(response));
 }
 
 /**
@@ -184,7 +163,7 @@ export async function finishService(
   if (session.role !== "ADMIN")
     throw new Error("Solo un Administrador puede cerrar órdenes");
 
-  const response = await apiClient.post<{ service: any }, FinishServiceInput>(
+  const response = await apiClient.post<ServiceDto, FinishServiceInput>(
     `/services/${id}/finish`,
     {
       finalAmount: data.finalAmount,
@@ -193,11 +172,7 @@ export async function finishService(
     { idempotencyKey, cookies }
   );
 
-  if (!response.success) {
-    throw new Error(response.error?.message || "Error al cerrar servicio");
-  }
-
-  return adaptService(response.data.service);
+  return adaptService(unwrapData(response));
 }
 
 /**
@@ -213,17 +188,13 @@ export async function cancelService(
   if (session.role !== "ADMIN")
     throw new Error("Solo un Administrador puede cancelar órdenes");
 
-  const response = await apiClient.patch<{ service: any }>(
+  const response = await apiClient.patch<ServiceDto>(
     `/services/${id}`,
     { status: "CANCELLED" },
     { idempotencyKey, cookies }
   );
 
-  if (!response.success) {
-    throw new Error(response.error?.message || "Error al cancelar servicio");
-  }
-
-  return adaptService(response.data.service);
+  return adaptService(unwrapData(response));
 }
 
 /** Obtiene el historial paginado de un servicio. */
@@ -232,15 +203,11 @@ export async function getServiceHistory(
   session: SessionUser,
   cookies?: string
 ): Promise<any[]> {
-  const response = await apiClient.get<{
-    activities: any[];
-  }>(`/services/${id}/history`, cookies);
-
-  if (!response.success) {
-    throw new Error(response.error?.message || "Error al obtener historial");
+  interface ActivityDto {
+    id: string;
   }
-
-  return response.data?.activities || [];
+  const response = await apiClient.get<ActivityDto[]>(`/services/${id}/history`, cookies);
+  return unwrapData(response);
 }
 
 /** Obtiene la agenda de servicios. */
@@ -264,11 +231,6 @@ export async function getSchedule(
   if (params?.dateFrom) queryParams.dateFrom = params.dateFrom;
   if (params?.dateTo) queryParams.dateTo = params.dateTo;
 
-  const response = await apiClient.get<{ services: any[] }>("/schedule", queryParams, cookies);
-
-  if (!response.success) {
-    throw new Error(response.error?.message || "Error al obtener agenda");
-  }
-
-  return response.data?.services || [];
+  const response = await apiClient.get<ServiceDto[]>("/schedule", queryParams, cookies);
+  return unwrapData(response);
 }

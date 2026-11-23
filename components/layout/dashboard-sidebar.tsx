@@ -26,6 +26,8 @@ import {
   UserCircle,
   LogOut,
   ClipboardList,
+  PackageSearch,
+  Tags,
 } from "lucide-react"
 import { useState } from "react"
 import { apiClient } from "@/lib/api-client"
@@ -44,6 +46,7 @@ const adminNavItems = [
   { title: "Presupuestos", href: "/admin/estimates", icon: FileText },
   { title: "Rendiciones", href: "/admin/settlements", icon: ClipboardList },
   { title: "Cobros", href: "/admin/payments", icon: CreditCard },
+  { title: "Inventario", href: "/admin/inventory", icon: PackageSearch },
 ]
 
 const technicianNavItems = [
@@ -55,6 +58,7 @@ const technicianNavItems = [
     href: "/technician/settlements",
     icon: CreditCard,
   },
+  { title: "Lista de precios", href: "/technician/prices", icon: Tags },
 ]
 
 export function DashboardSidebar({ user }: DashboardSidebarProps) {

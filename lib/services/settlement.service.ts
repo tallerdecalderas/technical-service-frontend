@@ -11,12 +11,35 @@
  * - Una rendición PAID no puede modificarse.
  */
 
-import { apiClient } from "@/lib/api-client";
+import { apiClient, unwrapData, unwrapList } from "@/lib/api-client";
 import type { Settlement, SettlementFilters, SessionUser } from "@/types";
 import type { z } from "zod";
 import type { generateSettlementSchema } from "@/lib/validations";
 
 export type GenerateSettlementInput = z.infer<typeof generateSettlementSchema>;
+
+interface SettlementDto {
+  id: string;
+  technicianId: string;
+  companyId: string | null;
+  startDate: string;
+  endDate: string;
+  label: string | null;
+  commissionRate: number;
+  status: string;
+  servicesCount: number;
+  totalCollected: number;
+  totalDebt: number;
+  totalPartsCost: number;
+  totalPartsSale: number;
+  commissionBase: number;
+  techCommission: number;
+  compCommission: number;
+  liquidatedById: string | null;
+  liquidatedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
 
 export async function listSettlements(
   filters: SettlementFilters,
@@ -35,13 +58,10 @@ export async function listSettlements(
   if (filters.dateFrom) params.dateFrom = filters.dateFrom;
   if (filters.dateTo) params.dateTo = filters.dateTo;
 
-  const response = await apiClient.get<{ settlements: any[] }>("/settlements", params);
+  const response = await apiClient.get<SettlementDto[]>("/settlements", params);
+  const { data } = unwrapList(response);
 
-  if (!response.success) {
-    throw new Error(response.error?.message || "Error al listar rendiciones");
-  }
-
-  return (response.data?.settlements || []).map((s: any) => ({
+  return data.map((s) => ({
     id: s.id,
     technicianId: s.technicianId,
     companyId: s.companyId || null,
@@ -69,14 +89,8 @@ export async function getSettlementById(
   id: string,
   session: SessionUser,
 ): Promise<Settlement | null> {
-  const response = await apiClient.get<{ settlement: any }>(`/settlements/${id}`);
-
-  if (!response.success) {
-    if (response.error?.code === "NOT_FOUND") return null;
-    throw new Error(response.error?.message || "Error al obtener rendición");
-  }
-
-  const s = response.data.settlement;
+  const response = await apiClient.get<SettlementDto>(`/settlements/${id}`);
+  const s = unwrapData(response);
   return {
     id: s.id,
     technicianId: s.technicianId,
@@ -115,7 +129,7 @@ export async function generateSettlement(
   if (startDateDate >= endDateDate)
     throw new Error("La fecha de inicio debe ser anterior a la fecha de fin");
 
-  const response = await apiClient.post<{ settlement: any }, GenerateSettlementInput>(
+  const response = await apiClient.post<SettlementDto, GenerateSettlementInput>(
     "/settlements",
     {
       technicianId: data.technicianId,
@@ -128,11 +142,7 @@ export async function generateSettlement(
     { idempotencyKey }
   );
 
-  if (!response.success) {
-    throw new Error(response.error?.message || "Error al generar rendición");
-  }
-
-  const s = response.data.settlement;
+  const s = unwrapData(response);
   return {
     id: s.id,
     technicianId: s.technicianId,
@@ -166,17 +176,13 @@ export async function liquidateSettlement(
   if (session.role !== "ADMIN")
     throw new Error("Solo un Administrador puede liquidar rendiciones");
 
-  const response = await apiClient.patch<{ settlement: any }>(
+  const response = await apiClient.patch<SettlementDto>(
     `/settlements/${id}`,
     { status: "PAID" },
     { idempotencyKey, cookies }
   );
 
-  if (!response.success) {
-    throw new Error(response.error?.message || "Error al liquidar rendición");
-  }
-
-  const s = response.data.settlement;
+  const s = unwrapData(response);
   return {
     id: s.id,
     technicianId: s.technicianId,

@@ -7,7 +7,7 @@
  * Cada empresa posee su propio inventario de repuestos.
  */
 
-import { apiClient } from "@/lib/api-client";
+import { apiClient, unwrapData } from "@/lib/api-client";
 import type { Company, SessionUser } from "@/types";
 import type { z } from "zod";
 import type {
@@ -18,14 +18,32 @@ import type {
 export type CreateCompanyInput = z.infer<typeof createCompanySchema>;
 export type UpdateCompanyInput = z.infer<typeof updateCompanySchema>;
 
+interface CompanyDto {
+    id: string;
+    name: string;
+    logo: string | null;
+    costMarkupPercent: number;
+    defaultMarginPercent: number;
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface AuthorizedCompany {
+    id: string;
+    name: string;
+}
+
+export async function listAuthorizedCompanies(cookies?: string): Promise<AuthorizedCompany[]> {
+    const response = await apiClient.get<AuthorizedCompany[]>("/companies", cookies);
+    return unwrapData(response);
+}
+
 export async function listCompanies(session?: SessionUser, cookies?: string): Promise<Company[]> {
-    const response = await apiClient.get<{ companies: any[] }>("/companies", cookies);
+    const response = await apiClient.get<CompanyDto[]>("/companies", cookies);
+    const companies = unwrapData(response);
 
-    if (!response.success) {
-        throw new Error(response.error?.message || "Error al listar empresas");
-    }
-
-    return (response.data?.companies || []).map((c: any) => ({
+    return companies.map((c) => ({
         id: c.id,
         name: c.name,
         logo: c.logo || null,
@@ -38,13 +56,10 @@ export async function listCompanies(session?: SessionUser, cookies?: string): Pr
 }
 
 export async function listActiveCompanies(session?: SessionUser, cookies?: string): Promise<Company[]> {
-    const response = await apiClient.get<{ companies: any[] }>("/companies?isActive=true", cookies);
+    const response = await apiClient.get<CompanyDto[]>("/companies?isActive=true", cookies);
+    const companies = unwrapData(response);
 
-    if (!response.success) {
-        throw new Error(response.error?.message || "Error al listar empresas activas");
-    }
-
-    return (response.data?.companies || []).map((c: any) => ({
+    return companies.map((c) => ({
         id: c.id,
         name: c.name,
         logo: c.logo || null,
@@ -57,14 +72,8 @@ export async function listActiveCompanies(session?: SessionUser, cookies?: strin
 }
 
 export async function getCompanyById(id: string, session?: SessionUser, cookies?: string): Promise<Company | null> {
-    const response = await apiClient.get<{ company: any }>(`/companies/${id}`, cookies);
-
-    if (!response.success) {
-        if (response.error?.code === "NOT_FOUND") return null;
-        throw new Error(response.error?.message || "Error al obtener empresa");
-    }
-
-    const c = response.data.company;
+    const response = await apiClient.get<CompanyDto>(`/companies/${id}`, cookies);
+    const c = unwrapData(response);
     return {
         id: c.id,
         name: c.name,
@@ -86,7 +95,7 @@ export async function createCompany(
     if (session.role !== "ADMIN")
         throw new Error("Solo un Administrador puede crear empresas");
 
-    const response = await apiClient.post<{ company: any }, CreateCompanyInput>(
+    const response = await apiClient.post<CompanyDto, CreateCompanyInput>(
         "/companies",
         {
             name: data.name,
@@ -98,11 +107,7 @@ export async function createCompany(
         { idempotencyKey, cookies }
     );
 
-    if (!response.success) {
-        throw new Error(response.error?.message || "Error al crear empresa");
-    }
-
-    const c = response.data.company;
+    const c = unwrapData(response);
     return {
         id: c.id,
         name: c.name,
@@ -125,7 +130,7 @@ export async function updateCompany(
     if (session.role !== "ADMIN")
         throw new Error("Solo un Administrador puede modificar empresas");
 
-    const response = await apiClient.patch<{ company: any }, UpdateCompanyInput>(
+    const response = await apiClient.patch<CompanyDto, UpdateCompanyInput>(
         `/companies/${id}`,
         {
             name: data.name,
@@ -137,11 +142,7 @@ export async function updateCompany(
         { idempotencyKey, cookies }
     );
 
-    if (!response.success) {
-        throw new Error(response.error?.message || "Error al actualizar empresa");
-    }
-
-    const c = response.data.company;
+    const c = unwrapData(response);
     return {
         id: c.id,
         name: c.name,

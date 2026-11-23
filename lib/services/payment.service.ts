@@ -10,14 +10,14 @@
  * - Solo técnicos asignados pueden registrar cobros.
  */
 
-import { apiClient } from "@/lib/api-client";
+import { apiClient, unwrapData, unwrapList } from "@/lib/api-client";
 import {
   adaptPayment,
-  adaptPaymentDetail,
   adaptPaymentList,
 } from "@/lib/adapters/payment.adapter";
 import type { Payment, PaymentFilters, SessionUser } from "@/types";
 import type { z } from "zod";
+import type { PaymentDto } from "@/lib/dto/payment.dto";
 import type {
   createPaymentSchema,
   updatePaymentSchema,
@@ -49,16 +49,9 @@ export async function listPayments(
     params.dateTo = filters.dateTo;
   }
 
-  const response = await apiClient.get<{
-    payments: any[];
-    meta: { page: number; pageSize: number; total: number; totalPages: number };
-  }>("/payments", params, cookies);
-
-  if (!response.success) {
-    throw new Error(response.error?.message || "Error al listar cobros");
-  }
-
-  const adapted = adaptPaymentList(response as any);
+  const response = await apiClient.get<PaymentDto[]>("/payments", params, cookies);
+  const { data, meta } = unwrapList(response);
+  const adapted = adaptPaymentList({ payments: data, meta });
   return adapted.payments;
 }
 
@@ -67,14 +60,14 @@ export async function getPaymentById(
   session: SessionUser,
   cookies?: string
 ): Promise<Payment | null> {
-  const response = await apiClient.get<{ payment: any }>(`/payments/${id}`, cookies);
+  const response = await apiClient.get<PaymentDto>(`/payments/${id}`, cookies);
 
   if (!response.success) {
     if (response.error?.code === "NOT_FOUND") return null;
     throw new Error(response.error?.message || "Error al obtener cobro");
   }
 
-  const payment = adaptPaymentDetail(response as any);
+  const payment = adaptPayment(unwrapData(response));
 
   // Técnico solo puede ver sus propios cobros
   if (session.role === "TECHNICIAN" && payment?.technicianId !== session.id) {
@@ -88,18 +81,12 @@ export async function getPaymentByService(
   serviceId: string,
   cookies?: string
 ): Promise<Payment | null> {
-  const response = await apiClient.get<{ payment: any }>(
+  const response = await apiClient.get<PaymentDto[]>(
     `/payments?serviceId=${serviceId}`,
     cookies,
   );
-
-  if (!response.success) {
-    if (response.error?.code === "NOT_FOUND") return null;
-    throw new Error(response.error?.message || "Error al obtener cobro por servicio");
-  }
-
-  if (!response.data || response.data.length === 0) return null;
-  return adaptPayment(response.data[0]);
+  const { data } = unwrapList(response);
+  return data[0] ? adaptPayment(data[0]) : null;
 }
 
 export async function createPayment(
@@ -108,7 +95,7 @@ export async function createPayment(
   idempotencyKey?: string,
   cookies?: string
 ): Promise<Payment> {
-  const response = await apiClient.post<{ payment: any }, CreatePaymentInput>(
+  const response = await apiClient.post<PaymentDto, CreatePaymentInput>(
     "/payments",
     {
       serviceId: data.serviceId,
@@ -120,11 +107,7 @@ export async function createPayment(
     { idempotencyKey, cookies }
   );
 
-  if (!response.success) {
-    throw new Error(response.error?.message || "Error al crear cobro");
-  }
-
-  return adaptPayment(response.data.payment);
+  return adaptPayment(unwrapData(response));
 }
 
 /**
@@ -141,7 +124,7 @@ export async function updatePayment(
   if (session.role !== "ADMIN")
     throw new Error("Solo un Administrador puede modificar cobros");
 
-  const response = await apiClient.patch<{ payment: any }, UpdatePaymentInput>(
+  const response = await apiClient.patch<PaymentDto, UpdatePaymentInput>(
     `/payments/${id}`,
     {
       method: data.method,
@@ -151,9 +134,5 @@ export async function updatePayment(
     { idempotencyKey, cookies }
   );
 
-  if (!response.success) {
-    throw new Error(response.error?.message || "Error al actualizar cobro");
-  }
-
-  return adaptPayment(response.data.payment);
+  return adaptPayment(unwrapData(response));
 }
