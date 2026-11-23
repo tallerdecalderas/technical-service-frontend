@@ -134,13 +134,36 @@ export const updateEstimateSchema = createEstimateSchema.partial().omit({
 
 // ─── Rendiciones ──────────────────────────────────────────────────────────────
 
+// Este schema refleja el contrato del backend Go (POST /api/v1/settlements):
+// - companyRate se envía como string (el backend lo parsea como numeric)
+// - insurance y adjustments son arrays opcionales de { kind, concept, amount }
 export const generateSettlementSchema = z.object({
   technicianId: z.string().uuid("technicianId inválido"),
   companyId: z.string().uuid().optional().nullable(),
   startDate: z.string().min(1, "La fecha de inicio es requerida"),
   endDate: z.string().min(1, "La fecha de fin es requerida"),
   label: z.string().optional().nullable(),
-  commissionRate: z.number().min(0).max(1, "La comisión debe ser entre 0 y 1"),
+  companyRate: z.string().min(1, "La comisión es requerida").default("0.5"),
+  insurance: z
+    .array(
+      z.object({
+        kind: z.string().min(1),
+        concept: z.string().min(1),
+        amount: z.string().min(1),
+      })
+    )
+    .optional()
+    .default([]),
+  adjustments: z
+    .array(
+      z.object({
+        kind: z.string().min(1),
+        concept: z.string().min(1),
+        amount: z.string().min(1),
+      })
+    )
+    .optional()
+    .default([]),
 });
 
 // ─── Técnicos ─────────────────────────────────────────────────────────────────
